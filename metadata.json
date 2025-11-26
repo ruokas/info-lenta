@@ -1,0 +1,5 @@
+{
+  "name": "ER Flow Manager",
+  "description": "A comprehensive Emergency Room patient and bed management dashboard allowing staff to track patient status, assign beds, and visualize the department flow.",
+  "requestFramePermissions": []
+}
