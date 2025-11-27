@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { TRIAGE_COLORS, STATUS_COLORS } from '../constants';
@@ -76,7 +77,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
       setAnimatingBeds(prev => [...prev, sourceBedId, targetBedId]);
       setTimeout(() => {
         setAnimatingBeds(prev => prev.filter(id => id !== sourceBedId && id !== targetBedId));
-      }, 700); // 700ms animation
+      }, 500); // 500ms animation for snappier feel
       
       onMovePatient(sourceBedId, targetBedId);
     }
@@ -107,8 +108,8 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
               onDrop={(e) => handleDrop(e, bed.id)}
               className={`
                 relative flex flex-col justify-between
-                min-h-[140px] rounded-xl border transition-all cursor-pointer shadow-sm
-                ${isAnimating ? 'ring-2 ring-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-[1.02] z-10' : ''}
+                min-h-[140px] rounded-xl border transition-all duration-300 ease-out cursor-pointer shadow-sm
+                ${isAnimating ? 'ring-2 ring-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)] scale-[1.05] z-10 duration-500 ease-out' : ''}
                 ${isDragTarget ? 'border-blue-500 ring-2 ring-blue-500/20 bg-slate-800/80 scale-[1.02]' : ''}
                 ${!isDragTarget && !isAnimating && isEmpty ? 'bg-slate-900 border-dashed border-slate-700 opacity-60 hover:opacity-100 hover:border-slate-600' : ''}
                 ${!isDragTarget && !isAnimating && !isEmpty ? 'bg-slate-800 border-slate-700 hover:shadow-md hover:-translate-y-1' : ''}

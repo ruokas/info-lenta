@@ -1,4 +1,5 @@
-import { Bed, PatientStatus, TriageCategory, Staff } from './types';
+
+import { Bed, PatientStatus, TriageCategory, Staff, MedicationItem } from './types';
 
 // Staff Data
 export const DOCTORS: Staff[] = [
@@ -18,48 +19,145 @@ export const NURSES: Staff[] = [
   { id: 'n7', name: 'Amb. Slaug. 2', role: 'Nurse' },
 ];
 
-export const COMMON_ER_DRUGS = [
-  { name: 'Ketorolakas', dose: '30mg (1ml)', route: 'IV' }, // Ex Ketanov
-  { name: 'Metamizolas', dose: '1g (2ml)', route: 'IV' },   // Ex Analgin
-  { name: 'NaCl 0.9%', dose: '500ml', route: 'IV' },
-  { name: 'Metoprololis', dose: '5mg', route: 'IV' },
-  { name: 'Diazepamas', dose: '10mg', route: 'PO' },
-  { name: 'Morfinas', dose: '5mg', route: 'SC' },
-  { name: 'Paracetamolis', dose: '1g', route: 'IV' },
-  { name: 'Epinefrinas', dose: '1mg', route: 'IV' },        // Ex Adrenalinas
-  { name: 'Metoklopramidas', dose: '10mg (2ml)', route: 'IV' }, // Ex Cerucal
-  { name: 'Drotaverinas', dose: '40mg (2ml)', route: 'IV' },    // Ex No-Spa
+// Initial Medication Bank (Used if no custom data saved)
+export const INITIAL_MEDICATIONS: MedicationItem[] = [
+  { id: 'm1', name: 'Acetylcysteinum', dose: '600mg', route: 'PO', category: 'Kiti' },
+  { id: 'm2', name: 'Acidum acetylsalicylicum', dose: '100mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm3', name: 'Actilyse', dose: '50mg', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm4', name: 'Adenosinum', dose: '5mg/ml 2ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm5', name: 'Adrenalinum', dose: '1mg/ml 1ml', route: 'IV', category: 'Reanimaciniai' },
+  { id: 'm6', name: 'Aktyvioji anglis', dose: '2,88g', route: 'PO', category: 'Toksikologiniai' },
+  { id: 'm7', name: 'Aminofilinum', dose: '24mg/ml', route: 'IV', category: 'Kvėpavimo takams' },
+  { id: 'm8', name: 'Amiodaronum', dose: '50mg/ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm9', name: 'Amlodipinum', dose: '10mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm10', name: 'Amoxicillinum/Acidum Clavulanicum', dose: '1000/200mg', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm11', name: 'Antitoks.serumas muo gyvačių nuodų', dose: '1 amp', route: 'IV', category: 'Toksikologiniai' },
+  { id: 'm12', name: 'Apixabanum', dose: '2,5mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm13', name: 'Apixabanum', dose: '5mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm14', name: 'Atropini sulfas', dose: '1mg/ml 1ml', route: 'IV', category: 'Reanimaciniai' },
+  { id: 'm15', name: 'Bisoprololum', dose: '5mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm16', name: 'Captoprilum', dose: '25mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm17', name: 'Captoprilum', dose: '50mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm18', name: 'Carbamazepinum', dose: '200mg', route: 'PO', category: 'Neurologiniai' },
+  { id: 'm19', name: 'Cefazolinum', dose: '1g', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm20', name: 'Cefriaxonum', dose: '1g', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm21', name: 'Cefuroximum', dose: '1500mg', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm22', name: 'Ciprofloxacinum', dose: '500mg', route: 'PO', category: 'Antibiotikai' },
+  { id: 'm23', name: 'Clarithromycinum', dose: '500mg', route: 'PO', category: 'Antibiotikai' },
+  { id: 'm24', name: 'Clemastinum', dose: '1mg/ml', route: 'IV', category: 'Priešalerginiai' },
+  { id: 'm25', name: 'Clopidogrelum', dose: '75mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm26', name: 'Dexamethasonum', dose: '4mg/ml', route: 'IV', category: 'Priešalerginiai' },
+  { id: 'm27', name: 'Dicynone', dose: '250mg 2ml', route: 'IV', category: 'Kraujavimui' },
+  { id: 'm28', name: 'Diclofenacum', dose: '75mg/3ml', route: 'IM', category: 'Nuskausminamieji' },
+  { id: 'm29', name: 'Drotaverinum', dose: '40mg/2ml', route: 'IV', category: 'Spazmolitikai' },
+  { id: 'm30', name: 'Duphalac', dose: '500ml', route: 'PO', category: 'Virškinimo traktui' },
+  { id: 'm31', name: 'Enaloprilum', dose: '1,25mg/ml 1ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm32', name: 'Esomeprazolum', dose: '40mg', route: 'IV', category: 'Virškinimo traktui' },
+  { id: 'm33', name: 'Etomidatum', dose: '2mg/ml', route: 'IV', category: 'Sedacija' },
+  { id: 'm34', name: 'Furosemidum', dose: '10mg/ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm35', name: 'Glyceroli trinitras', dose: '0,5mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm36', name: 'Glyceroli trinitras', dose: '1mg/ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm37', name: 'Heparinum', dose: '25000 IU/5ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm38', name: 'Hydrogenii peroxidi 3%', dose: '100ml', route: 'Topical', category: 'Kiti' },
+  { id: 'm39', name: 'Ibuprofenum', dose: '400mg', route: 'PO', category: 'Nuskausminamieji' },
+  { id: 'm40', name: 'Imovax d.T adult', dose: '0.5ml', route: 'IM', category: 'Vakcinos' },
+  { id: 'm41', name: 'Insulinum Humulin', dose: 'var', route: 'SC', category: 'Endokrinologiniai' },
+  { id: 'm42', name: 'Isosorbidum dinitrum', dose: '10mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm43', name: 'Kalii chloridum', dose: '750mg', route: 'PO', category: 'Elektrolitai' },
+  { id: 'm44', name: 'Ketoprofenum', dose: '100mg/2ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm45', name: 'Ketorolaci tromethaminum', dose: '30mg/ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm46', name: 'Loperamidum', dose: '2mg', route: 'PO', category: 'Virškinimo traktui' },
+  { id: 'm47', name: 'Magnesium sulfatum', dose: '250mg/ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm48', name: 'Metamizolum sodium', dose: '500mg/ml 2ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm49', name: 'Metoclopramidum', dose: '5mg/ml 2ml', route: 'IV', category: 'Virškinimo traktui' },
+  { id: 'm50', name: 'Metoprololum', dose: '1mg/ml 5ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm51', name: 'Metoprololum', dose: '25mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm52', name: 'Metoprololum', dose: '47,5mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm53', name: 'Microlax', dose: '5ml', route: 'PR', category: 'Virškinimo traktui' },
+  { id: 'm54', name: 'Moxonidinum', dose: '0,4mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm55', name: 'Nadroparinum calcicum', dose: '2850 anti-Xa TV/0,3ml', route: 'SC', category: 'Kardiologiniai' },
+  { id: 'm56', name: 'Nadroparinum calcicum', dose: '5700 anti-Xa TV/0,6ml', route: 'SC', category: 'Kardiologiniai' },
+  { id: 'm57', name: 'Naloxonum', dose: '0,4mg/ml 1ml', route: 'IV', category: 'Reanimaciniai' },
+  { id: 'm58', name: 'Norepinephrinum', dose: '1mg/ml 4ml', route: 'IV', category: 'Reanimaciniai' },
+  { id: 'm59', name: 'NovoRapid FlexPen', dose: '100V/ml', route: 'SC', category: 'Endokrinologiniai' },
+  { id: 'm60', name: 'Ondansetronum', dose: '2mg/ml 4ml', route: 'IV', category: 'Virškinimo traktui' },
+  { id: 'm61', name: 'Pantoprazolum', dose: '40mg', route: 'IV', category: 'Virškinimo traktui' },
+  { id: 'm62', name: 'Paracetamolum', dose: '10mg/ml 100ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm63', name: 'Paracetamolum', dose: '500mg', route: 'PO', category: 'Nuskausminamieji' },
+  { id: 'm64', name: 'Penicilinum', dose: '1000000TV', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm65', name: 'Pentoxifyllinum', dose: '20mg/ml 5ml', route: 'IV', category: 'Kiti' },
+  { id: 'm66', name: 'Propofolum', dose: '10mg/ml 20ml', route: 'IV', category: 'Sedacija' },
+  { id: 'm67', name: 'Ramiprilum', dose: '10mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm68', name: 'Rocuronium bromide', dose: '10mg/ml 5ml', route: 'IV', category: 'Reanimaciniai' },
+  { id: 'm69', name: 'Salbutamolum', dose: '100mcg/doz.', route: 'Inhal', category: 'Kvėpavimo takams' },
+  { id: 'm70', name: 'Salbutamolum', dose: '2,5mg/2,5ml', route: 'Nebul', category: 'Kvėpavimo takams' },
+  { id: 'm71', name: 'Salbutamolum', dose: '500mcg/ml', route: 'IV', category: 'Kvėpavimo takams' },
+  { id: 'm72', name: 'Thiaminum', dose: '50mg/ml 2ml', route: 'IV', category: 'Vitaminai' },
+  { id: 'm73', name: 'Nifedipinum', dose: '20mg', route: 'PO', category: 'Kardiologiniai' },
+  { id: 'm74', name: 'Piperacillinum/Tazobactamum', dose: '4/0,5g', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm75', name: 'Midazolamum', dose: '5mg/ml 1ml', route: 'IV', category: 'Sedacija' },
+  { id: 'm76', name: 'Tiapridum', dose: '100mg/2ml', route: 'IV', category: 'Neurologiniai' },
+  { id: 'm77', name: 'Diazepamum', dose: '5mg/ml 2ml', route: 'IV', category: 'Neurologiniai' },
+  { id: 'm78', name: 'Diazepamum', dose: '5mg', route: 'PO', category: 'Neurologiniai' },
+  { id: 'm79', name: 'Haloperidolum', dose: '5mg/ml 1ml', route: 'IV', category: 'Neurologiniai' },
+  { id: 'm80', name: 'Digoxinum', dose: '0,5mg/2ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm81', name: 'Flumazenilum', dose: '0,1mg/ml 5ml', route: 'IV', category: 'Reanimaciniai' },
+  { id: 'm82', name: 'Calcium gluconatum', dose: '10% 10ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm83', name: 'Phytomenadionum', dose: '10mg/ml 1ml', route: 'IM', category: 'Vitaminai' },
+  { id: 'm84', name: 'Tranexamic acid', dose: '100mg/ml 5ml', route: 'IV', category: 'Kraujavimui' },
+  { id: 'm85', name: 'Ketaminum hydrochloridum', dose: '250mg/5ml', route: 'IV', category: 'Sedacija' },
+  { id: 'm86', name: 'Labetalolum', dose: '5mg/ml 20ml', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm87', name: 'Glucose', dose: '40% 10ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm88', name: 'Natrio Nitroprusidas', dose: 'var', route: 'IV', category: 'Kardiologiniai' },
+  { id: 'm89', name: 'Ultracarbon', dose: '61,5/50g', route: 'PO', category: 'Toksikologiniai' },
+  { id: 'm90', name: 'Morphinum', dose: '10mg/ml 1ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm91', name: 'Fentanylum', dose: '50mcg/ml 2ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm92', name: 'Tramadolum', dose: '50mg/ml 2ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm93', name: 'Pethidinum', dose: '50mg/ml 1ml', route: 'IV', category: 'Nuskausminamieji' },
+  { id: 'm94', name: 'Mannitol Fresenius', dose: '10% 500ml', route: 'IV', category: 'Kiti' },
+  { id: 'm95', name: 'Sodium Bicarbonate', dose: '8,4% 100ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm96', name: 'Sodium chloride', dose: '10% 100ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm97', name: 'Potassium chloride', dose: '10% 100ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm98', name: 'Metronidazolum', dose: '0.5% 100ml', route: 'IV', category: 'Antibiotikai' },
+  { id: 'm99', name: 'Sodium chloride', dose: '0,9% 500ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm100', name: 'Ringeri', dose: '500ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm101', name: 'Ringeri', dose: '1000ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm102', name: 'Sodium chloride', dose: '0.9% 250ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm103', name: 'Glucose', dose: '20% 500ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm104', name: 'Glucose', dose: '10% 500ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm105', name: 'Glucose', dose: '5% 500ml', route: 'IV', category: 'Elektrolitai' },
+  { id: 'm106', name: 'Etanolio tirpalas', dose: '70% 100ml', route: 'Topical', category: 'Toksikologiniai' },
 ];
 
 export const MEDICATION_PROTOCOLS = [
   { 
     name: 'Skausmo', 
     meds: [
-      { name: 'Ketorolakas', dose: '30mg', route: 'IV' },
-      { name: 'Paracetamolis', dose: '1g', route: 'IV' }
+      { name: 'Ketorolaci tromethaminum', dose: '30mg', route: 'IV' },
+      { name: 'Paracetamolum', dose: '1g', route: 'IV' }
     ]
   },
   { 
     name: 'ŪKS (ACS)', 
     meds: [
-      { name: 'Acetilsalicilo r.', dose: '300mg', route: 'PO' },
+      { name: 'Acidum acetylsalicylicum', dose: '300mg', route: 'PO' },
       { name: 'Tikagreloras', dose: '180mg', route: 'PO' },
-      { name: 'Heparinas', dose: '5000UI', route: 'IV' }
+      { name: 'Heparinum', dose: '5000UI', route: 'IV' }
     ]
   },
   { 
     name: 'Sepsis', 
     meds: [
-      { name: 'NaCl 0.9%', dose: '1000ml', route: 'IV' },
-      { name: 'Amoksicilinas/Klavulano r.', dose: '1.2g', route: 'IV' },
-      { name: 'Paracetamolis', dose: '1g', route: 'IV' }
+      { name: 'Sodium chloride 0,9%', dose: '1000ml', route: 'IV' },
+      { name: 'Amoxicillinum/Acidum Clavulanicum', dose: '1.2g', route: 'IV' },
+      { name: 'Paracetamolum', dose: '1g', route: 'IV' }
     ]
   },
   { 
     name: 'Pykinimo', 
     meds: [
-      { name: 'Metoklopramidas', dose: '10mg', route: 'IV' },
-      { name: 'NaCl 0.9%', dose: '500ml', route: 'IV' }
+      { name: 'Metoclopramidum', dose: '10mg', route: 'IV' },
+      { name: 'Sodium chloride 0,9%', dose: '500ml', route: 'IV' }
     ]
   }
 ];
@@ -184,6 +282,11 @@ export const INITIAL_BEDS: Bed[] = [
   { id: 'bed-a8', label: 'A8', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
   { id: 'bed-a9', label: 'A9', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
   { id: 'bed-a10', label: 'A10', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
+  { id: 'bed-a11', label: 'A11', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
+  { id: 'bed-a12', label: 'A12', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
+  { id: 'bed-a13', label: 'A13', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
+  { id: 'bed-a14', label: 'A14', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
+  { id: 'bed-a15', label: 'A15', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
 ];
 
 export const STATUS_COLORS: Record<PatientStatus, string> = {

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2 } from 'lucide-react';
 import BedTableView from './components/BedTableView';
@@ -8,18 +7,16 @@ import SettingsView from './components/SettingsView';
 import PatientLogView from './components/PatientLogView';
 import LoginView from './components/LoginView';
 import { DataService } from './services/DataService';
-import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus } from './types';
-import { INITIAL_BEDS, DOCTORS, NURSES } from './constants';
+import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem } from './types';
+import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS } from './constants';
 
 const App: React.FC = () => {
-  // State logic moved to consume DataService instead of raw localStorage in initializers
-  // We start with defaults, then load async
   const [doctors, setDoctors] = useState<Staff[]>(DOCTORS);
   const [nurses, setNurses] = useState<Staff[]>(NURSES);
+  const [medicationBank, setMedicationBank] = useState<MedicationItem[]>(INITIAL_MEDICATIONS);
   const [beds, setBeds] = useState<Bed[]>(INITIAL_BEDS);
   const [patientLog, setPatientLog] = useState<PatientLogEntry[]>([]);
   
-  // UI State (Still LocalStorage for preferences is fine, or simple state)
   const [autoRefresh, setAutoRefresh] = useState(() => {
     const saved = localStorage.getItem('er_auto_refresh');
     return saved ? JSON.parse(saved) : true;
@@ -31,7 +28,7 @@ const App: React.FC = () => {
   });
 
   const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'log'>('table');
-  const [activeTab, setActiveTab] = useState<'general' | 'ambulatory'>('general'); // NEW: Tab State
+  const [activeTab, setActiveTab] = useState<'general' | 'ambulatory'>('general');
   
   const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -41,14 +38,12 @@ const App: React.FC = () => {
   const [filterDoctor, setFilterDoctor] = useState<string>('ALL');
   const [lastUpdated, setLastUpdated] = useState(new Date());
   
-  // Menu & Notification States
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
-  // Load Initial Data
   useEffect(() => {
     const loadData = async () => {
       const loadedBeds = await DataService.fetchBeds();
@@ -60,13 +55,15 @@ const App: React.FC = () => {
       const loadedNurses = await DataService.fetchStaff('nurses');
       setNurses(loadedNurses);
 
+      const loadedMeds = await DataService.fetchMedications();
+      setMedicationBank(loadedMeds);
+
       const loadedLogs = await DataService.fetchLogs();
       setPatientLog(loadedLogs);
     };
     loadData();
   }, []);
 
-  // Real-time Subscription (Beds only for now)
   useEffect(() => {
     const { unsubscribe } = DataService.subscribeToBeds((updatedBeds) => {
       setBeds(updatedBeds);
@@ -75,7 +72,6 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Close menus on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
@@ -89,7 +85,6 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Helper: Add Notification
   const addNotification = (type: AppNotification['type'], message: string, bedId?: string) => {
     const newNotif: AppNotification = {
       id: Date.now().toString() + Math.random(),
@@ -102,7 +97,6 @@ const App: React.FC = () => {
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  // Helper: Check for Overdue Patients (> 4 hours)
   const checkOverduePatients = () => {
     const now = new Date();
     beds.forEach(bed => {
@@ -115,7 +109,6 @@ const App: React.FC = () => {
         const diffMinutes = Math.floor(diff / 60000);
 
         if (diffMinutes > 240) {
-          // Check if we already notified about this patient recently (simple check by message content to avoid spam)
           const msg = `Pacientas ${bed.patient.name} (Lova ${bed.label}) skyriuje > 4 val.`;
           const alreadyNotified = notifications.some(n => n.message === msg && !n.isRead);
           
@@ -127,7 +120,6 @@ const App: React.FC = () => {
     });
   };
 
-  // Helper: Check Medication Reminders
   const checkMedicationReminders = () => {
     const now = new Date();
     beds.forEach(bed => {
@@ -148,7 +140,6 @@ const App: React.FC = () => {
     });
   };
 
-  // Save changes via DataService
   const updateDoctors = (newDocs: Staff[]) => {
     setDoctors(newDocs);
     DataService.saveStaff('doctors', newDocs);
@@ -159,10 +150,13 @@ const App: React.FC = () => {
     DataService.saveStaff('nurses', newNurses);
   };
 
-  // Preference Persistence
+  const updateMedications = (newMeds: MedicationItem[]) => {
+    setMedicationBank(newMeds);
+    DataService.saveMedications(newMeds);
+  };
+
   useEffect(() => { localStorage.setItem('er_auto_refresh', JSON.stringify(autoRefresh)); }, [autoRefresh]);
 
-  // Auto-refresh logic (Update timestamp primarily & Check Alerts)
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
     if (autoRefresh) {
@@ -170,10 +164,10 @@ const App: React.FC = () => {
         setLastUpdated(new Date());
         checkOverduePatients();
         checkMedicationReminders();
-      }, 60000); // Check every minute
+      }, 60000);
     }
     return () => clearInterval(intervalId);
-  }, [autoRefresh, beds, notifications]); // Depend on beds/notifs to check accurately
+  }, [autoRefresh, beds, notifications]);
 
   const handleBedClick = (bed: Bed) => {
     setSelectedBed(bed);
@@ -197,38 +191,28 @@ const App: React.FC = () => {
     let newLogs = [...patientLog];
     const oldBed = beds.find(b => b.id === updatedBed.id);
 
-    // --- Notification Logic ---
-    // 1. Check for New Critical Admission (Cat 1)
     if (updatedBed.patient && updatedBed.patient.triageCategory === TriageCategory.IMMEDIATE) {
-       // Only if it wasn't Cat 1 before
        if (!oldBed?.patient || oldBed.patient.triageCategory !== TriageCategory.IMMEDIATE) {
           addNotification('ALERT', `SKUBU: Naujas 1 kat. pacientas Lovoje ${updatedBed.label}`, updatedBed.id);
        }
     }
 
-    // 2. Check for Assignment to Current User
     if (currentUser && updatedBed.assignedDoctorId === currentUser.id) {
-       // If was not assigned to me before
        if (oldBed?.assignedDoctorId !== currentUser.id) {
           addNotification('INFO', `Jums priskirtas naujas pacientas: Lova ${updatedBed.label}`, updatedBed.id);
        }
     }
 
-    // 3. Check for New Medications
     const oldMeds = oldBed?.patient?.medications || [];
     const newMeds = updatedBed.patient?.medications || [];
     if (newMeds.length > oldMeds.length) {
        const latestMed = newMeds[newMeds.length - 1];
-       // Only notify if it's not me adding it (in a real app), but here we just notify generally
        addNotification('INFO', `Naujas paskyrimas lovoje ${updatedBed.label}: ${latestMed.name}`, updatedBed.id);
     }
-    // --------------------------
 
-    // Optimistic Update
     const newBeds = beds.map(b => b.id === updatedBed.id ? updatedBed : b);
     setBeds(newBeds);
     
-    // Logic to check if we are removing a patient (Discharge)
     if (oldBed?.patient && (!updatedBed.patient || updatedBed.status === PatientStatus.EMPTY)) {
       const docName = doctors.find(d => d.id === oldBed.assignedDoctorId)?.name;
       
@@ -243,8 +227,8 @@ const App: React.FC = () => {
         treatedByDoctorName: docName,
         finalStatus: oldBed.status,
         allergies: oldBed.patient.allergies,
-        medications: oldBed.patient.medications, // Store full object
-        actions: oldBed.patient.actions // Store full object
+        medications: oldBed.patient.medications,
+        actions: oldBed.patient.actions
       };
       
       newLogs = [logEntry, ...newLogs];
@@ -252,25 +236,40 @@ const App: React.FC = () => {
       DataService.saveLogs(newLogs);
     }
 
-    // Persist to DB/Local
     await DataService.saveBeds(newBeds);
     
     setIsModalOpen(false);
     setSelectedBed(null);
   };
 
+  const handleQuickDischarge = async (bed: Bed) => {
+    if (!bed.patient) return;
+    
+    // Confirmation handled in BedTableView now
+    const updatedBed: Bed = {
+      ...bed,
+      patient: undefined,
+      status: PatientStatus.EMPTY,
+      comment: '',
+      assignedDoctorId: undefined
+    };
+    await handleSaveBed(updatedBed);
+    addNotification('SUCCESS', `Pacientas išrašytas iš lovos ${bed.label}`);
+  };
+
   const handleResetData = async () => {
     setDoctors(DOCTORS);
     setNurses(NURSES);
+    setMedicationBank(INITIAL_MEDICATIONS);
     setBeds(INITIAL_BEDS);
     setPatientLog([]);
     setNotifications([]);
     setAutoRefresh(true);
     localStorage.clear();
-    // Re-save defaults to wipe DB if connected
     await DataService.saveBeds(INITIAL_BEDS);
     await DataService.saveStaff('doctors', DOCTORS);
     await DataService.saveStaff('nurses', NURSES);
+    await DataService.saveMedications(INITIAL_MEDICATIONS);
     await DataService.saveLogs([]);
     window.location.reload(); 
   };
@@ -334,12 +333,10 @@ const App: React.FC = () => {
   };
 
   const filteredBeds = beds.filter(bed => {
-    // 0. Tab Filter
     const isAmbulatory = bed.section === 'Ambulatorinis (2 slaug.)';
     if (activeTab === 'general' && isAmbulatory) return false;
     if (activeTab === 'ambulatory' && !isAmbulatory) return false;
 
-    // 1. Existing Filters
     if (filterStatus !== 'ALL' && bed.status !== filterStatus) return false;
     if (filterNurse !== 'ALL' && bed.section !== filterNurse) return false;
     if (filterDoctor !== 'ALL' && bed.assignedDoctorId !== filterDoctor) return false;
@@ -359,22 +356,17 @@ const App: React.FC = () => {
   const emptyBedsCount = totalBedsCount - occupiedBedsCount;
   const criticalPatients = beds.filter(b => b.patient && b.patient.triageCategory <= 2).length;
   const waitingPatients = beds.filter(b => b.status === PatientStatus.WAITING_EXAM).length;
+  const unreadCount = notifications.length;
 
-  // Counts for tabs
   const generalOccupied = beds.filter(b => b.section !== 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
   const ambulatoryOccupied = beds.filter(b => b.section === 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
 
-  const unreadCount = notifications.length;
-
-  // Render Login View if not authenticated
   if (!currentUser) {
     return <LoginView doctors={doctors} nurses={nurses} onLogin={handleLogin} />;
   }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-100 font-sans">
-      
-      {/* Sidebar Navigation */}
       <aside className="w-full md:w-20 lg:w-64 bg-slate-900 text-slate-400 flex flex-col shrink-0 transition-all duration-300 border-r border-slate-800">
         <div className="h-16 flex items-center px-4 md:justify-center lg:justify-start gap-3 border-b border-slate-800">
           <div className="bg-blue-600 p-1.5 rounded-lg text-white">
@@ -416,7 +408,6 @@ const App: React.FC = () => {
             </div>
             
             <div className="px-3 space-y-4">
-               {/* Occupancy Bars */}
                <div className="space-y-3 p-3 bg-slate-950/50 rounded-lg border border-slate-800/50">
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
@@ -479,7 +470,6 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-950">
         <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 shadow-sm z-20">
            <div className="flex items-center gap-4 w-full max-w-5xl">
@@ -538,8 +528,6 @@ const App: React.FC = () => {
            </div>
 
            <div className="flex items-center gap-4">
-              
-              {/* Notification Bell */}
               <div className="relative" ref={notifRef}>
                 <button 
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -594,7 +582,6 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
                 <button 
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -615,15 +602,15 @@ const App: React.FC = () => {
                     <div className="p-1">
                       <button 
                         onClick={() => { setViewMode('settings'); setIsUserMenuOpen(false); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition"
                       >
-                         <UserIcon size={16} /> Profilis
+                         <Settings size={14} /> Nustatymai
                       </button>
                       <button 
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-900/20 rounded-lg transition"
+                        onClick={() => { handleLogout(); setIsUserMenuOpen(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition mt-1"
                       >
-                         <LogOut size={16} /> Atsijungti
+                         <LogOut size={14} /> Atsijungti
                       </button>
                     </div>
                   </div>
@@ -631,97 +618,79 @@ const App: React.FC = () => {
               </div>
            </div>
         </header>
-
-        {/* View Mode Tabs (Only for Table/Map) */}
-        {(viewMode === 'table' || viewMode === 'map') && (
-          <div className="bg-slate-900/50 border-b border-slate-800 px-6 flex gap-6 backdrop-blur-sm z-10">
-            <button
-              onClick={() => setActiveTab('general')}
-              className={`py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 ${
-                activeTab === 'general' 
-                  ? 'border-blue-500 text-blue-400' 
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
+        
+        {/* Tab Navigation */}
+        <div className="flex items-center px-6 pt-2 gap-1 border-b border-slate-800 bg-slate-950 shrink-0">
+           <button
+             onClick={() => setActiveTab('general')}
+             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'general' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+           >
               Salė
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === 'general' ? 'bg-blue-900/30 text-blue-300' : 'bg-slate-800 text-slate-500'}`}>
-                {generalOccupied}
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveTab('ambulatory')}
-              className={`py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 ${
-                activeTab === 'ambulatory' 
-                  ? 'border-amber-500 text-amber-400' 
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
+              {generalOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{generalOccupied}</span>}
+           </button>
+           <button
+             onClick={() => setActiveTab('ambulatory')}
+             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'ambulatory' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+           >
               Ambulatorija
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === 'ambulatory' ? 'bg-amber-900/30 text-amber-300' : 'bg-slate-800 text-slate-500'}`}>
-                {ambulatoryOccupied}
-              </span>
-            </button>
-          </div>
-        )}
-
-        <div className="flex-1 p-6 overflow-hidden flex flex-col bg-slate-950 relative">
-          {viewMode !== 'settings' && viewMode !== 'log' && (
-            <div className="flex justify-between items-center mb-4 shrink-0">
-               <h2 className="text-xl font-bold text-slate-100">
-                 {viewMode === 'table' ? (activeTab === 'general' ? 'Salės pacientai' : 'Ambulatorijos pacientai') : 'Skyriaus apžvalga'}
-               </h2>
-               <div className="text-sm text-slate-500 flex items-center gap-2">
-                  <Activity size={14} className="text-blue-500 animate-pulse" />
-                  Atnaujinta: {lastUpdated.toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit' })}
-               </div>
-            </div>
-          )}
-
-          <div className={`flex-1 overflow-y-auto custom-scrollbar rounded-xl shadow-sm ${viewMode !== 'settings' ? 'border border-slate-800 bg-slate-900' : ''}`}>
-             {viewMode === 'table' && (
-                <BedTableView 
-                  beds={filteredBeds} 
-                  doctors={doctors} 
-                  onRowClick={handleBedClick} 
-                />
-             )}
-             {viewMode === 'map' && (
-                <BedMapView 
-                  beds={filteredBeds} 
-                  doctors={doctors}
-                  onBedClick={handleBedClick} 
-                  onMovePatient={handleMovePatient}
-                />
-             )}
-             {viewMode === 'settings' && (
-               <SettingsView 
-                  doctors={doctors}
-                  setDoctors={updateDoctors}
-                  nurses={nurses}
-                  setNurses={updateNurses}
-                  autoRefresh={autoRefresh}
-                  setAutoRefresh={setAutoRefresh}
-                  onResetData={handleResetData}
-               />
-             )}
-             {viewMode === 'log' && (
-               <PatientLogView logs={patientLog} doctors={doctors} />
-             )}
-          </div>
+              {ambulatoryOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{ambulatoryOccupied}</span>}
+           </button>
         </div>
 
+        <div className="flex-1 overflow-hidden relative">
+          {viewMode === 'table' ? (
+            <div className="absolute inset-0 overflow-auto custom-scrollbar">
+               <BedTableView 
+                beds={filteredBeds} 
+                doctors={doctors}
+                onRowClick={handleBedClick}
+                onDischarge={handleQuickDischarge}
+               />
+            </div>
+          ) : viewMode === 'map' ? (
+            <div className="absolute inset-0 overflow-hidden">
+               <BedMapView 
+                 beds={filteredBeds} 
+                 doctors={doctors} 
+                 onBedClick={handleBedClick} 
+                 onMovePatient={handleMovePatient}
+               />
+            </div>
+          ) : viewMode === 'log' ? (
+            <div className="absolute inset-0 overflow-hidden">
+              <PatientLogView 
+                logs={patientLog}
+                doctors={doctors}
+              />
+            </div>
+          ) : (
+            <div className="absolute inset-0 overflow-auto custom-scrollbar">
+              <SettingsView 
+                doctors={doctors}
+                setDoctors={updateDoctors}
+                nurses={nurses}
+                setNurses={updateNurses}
+                medicationBank={medicationBank}
+                setMedications={updateMedications}
+                autoRefresh={autoRefresh}
+                setAutoRefresh={setAutoRefresh}
+                onResetData={handleResetData}
+                currentUser={currentUser}
+              />
+            </div>
+          )}
+        </div>
       </main>
 
-      {selectedBed && (
-        <EditPatientModal 
-          bed={selectedBed} 
-          doctors={doctors}
-          currentUser={currentUser}
-          isOpen={isModalOpen} 
-          onClose={() => setIsModalOpen(false)} 
-          onSave={handleSaveBed} 
-        />
-      )}
+      <EditPatientModal
+        bed={selectedBed!} // Safe because modal only opens when selectedBed is set
+        doctors={doctors}
+        currentUser={currentUser}
+        medicationBank={medicationBank}
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setSelectedBed(null); }}
+        onSave={handleSaveBed}
+      />
     </div>
   );
 };

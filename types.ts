@@ -23,6 +23,16 @@ export enum MedicationStatus {
   CANCELLED = 'Atšaukta'
 }
 
+// NEW: Definition for a drug in the bank
+export interface MedicationItem {
+  id: string;
+  name: string;
+  dose: string;
+  route: string; // IV, IM, PO, SC, INF
+  category?: string; // NEW: Grouping (e.g. Antibiotics, Painkillers)
+  isActive?: boolean; // NEW: Soft delete/Archived status
+}
+
 export interface MedicationOrder {
   id: string;
   name: string;
@@ -61,7 +71,7 @@ export interface Vitals {
 export interface Staff {
   id: string;
   name: string;
-  role: 'Doctor' | 'Nurse' | 'Assistant';
+  role: 'Doctor' | 'Nurse' | 'Assistant' | 'Admin';
 }
 
 export interface UserProfile extends Staff {

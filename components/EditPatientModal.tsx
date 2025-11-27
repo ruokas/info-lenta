@@ -1,19 +1,60 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType } from '../types';
-import { COMMON_ER_DRUGS, MEDICATION_PROTOCOLS } from '../constants';
+import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem } from '../types';
+import { MEDICATION_PROTOCOLS } from '../constants';
 import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse } from 'lucide-react';
 
 interface EditPatientModalProps {
   bed: Bed;
   doctors: Staff[];
   currentUser: UserProfile; 
+  medicationBank: MedicationItem[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedBed: Bed) => void;
 }
 
-const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, currentUser, isOpen, onClose, onSave }) => {
+// Common abbreviations and brand names mapping to active ingredients
+const DRUG_SYNONYMS: Record<string, string[]> = {
+  'Sodium chloride': ['NaCl', 'Natris', 'Fiziologinis', 'Fizikas'],
+  'Kalii chloridum': ['K', 'KCL', 'Kalis'],
+  'Magnesium sulfatum': ['Mg', 'Magnis', 'MgSO4'],
+  'Adrenalinum': ['Epinefrinas', 'Adr'],
+  'Norepinefrinum': ['Noradrenalinas', 'Nor'],
+  'Paracetamolum': ['PCM', 'Acetaminophen', 'Perfalgan'],
+  'Acidum acetylsalicylicum': ['Aspirinas', 'Asp'],
+  'Dexamethasonum': ['Dexa'],
+  'Furosemidum': ['Laziksas', 'Lasix', 'Furo'],
+  'Metoclopramidum': ['Cerucal', 'Cerukalis', 'Metro'],
+  'Diclofenacum': ['Diclac', 'Olfen', 'Diclo'],
+  'Ibuprofenum': ['Ibuprom', 'Ibumetin'],
+  'Ketorolaci tromethaminum': ['Ketanov', 'Ketolgan', 'Keto'],
+  'Diazepamum': ['Relanium', 'Diazepamas'],
+  'Clemastinum': ['Tavegyl'],
+  'Salbutamolum': ['Ventolin'],
+  'Amiodaronum': ['Cordarone'],
+  'Heparinum': ['Heparinas'],
+  'Mannitol Fresenius': ['Manitolis'],
+  'Glucose': ['Gliukozė'],
+  'Aktyvioji anglis': ['Angliukas', 'Carbo'],
+  'Hydrogenii peroxidi 3%': ['Peroksidas'],
+  'Glyceroli trinitras': ['Nitras', 'NTG', 'Nitroglicerinas'],
+  'Amoxicillinum/Acidum Clavulanicum': ['Amoksik', 'Augmentin'],
+  'Ciprofloxacinum': ['Cipro'],
+  'Pantoprazolum': ['Panto', 'Nolpaza'],
+  'Omeprazolum': ['Ome'],
+  'Tramadolum': ['Tramakas', 'Tramal'],
+  'Morphinum': ['Morfinas'],
+  'Fentanylum': ['Fentanilis'],
+  'Midazolamum': ['Dormicum'],
+  'Propofolum': ['Propofolis'],
+  'Metronidazolum': ['Metro', 'Metris'],
+  'Drotaverinum': ['No-spa', 'Nospa'],
+  'Captoprilum': ['Kaptoprilis'],
+  'Bisoprololum': ['Biso'],
+};
+
+const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, currentUser, medicationBank, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState<Bed>(bed);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
@@ -23,6 +64,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
   const [newMedName, setNewMedName] = useState('');
   const [newMedDose, setNewMedDose] = useState('');
   const [newMedRoute, setNewMedRoute] = useState('IV');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [medActionConfirm, setMedActionConfirm] = useState<{ id: string, status: MedicationStatus, name: string } | null>(null);
   
   // Medication Reminder State
   const [enableReminder, setEnableReminder] = useState(false);
@@ -31,17 +74,106 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
   // Action Form State
   const [newActionType, setNewActionType] = useState<ActionType>('LABS');
   const [newActionName, setNewActionName] = useState('');
+  const [newActionTime, setNewActionTime] = useState('');
+
+  // Priority list for Quick Picks
+  const quickPickMeds = useMemo(() => {
+    if (!medicationBank) return [];
+    
+    // Expanded list covering Pain, Fever, Emergency, Nausea, etc.
+    const COMMON_PRIORITY = [
+      'Ketorolaci tromethaminum',
+      'Paracetamolum', 
+      'Ibuprofenum',
+      'Metoclopramidum',
+      'Sodium chloride', // Fluids
+      'Diazepamum', 
+      'Morphinum',
+      'Adrenalinum',
+      'Captoprilum',
+      'Furosemidum',
+      'Salbutamolum',
+      'Glyceroli trinitras'
+    ];
+
+    // Filter active meds that match common priority names
+    const priorityMeds = medicationBank.filter(m => 
+        m.isActive !== false && 
+        COMMON_PRIORITY.some(p => m.name.includes(p))
+    );
+
+    priorityMeds.sort((a, b) => {
+        const idxA = COMMON_PRIORITY.findIndex(p => a.name.includes(p));
+        const idxB = COMMON_PRIORITY.findIndex(p => b.name.includes(p));
+        // Push found items to front based on priority index
+        const iA = idxA === -1 ? Infinity : idxA;
+        const iB = idxB === -1 ? Infinity : idxB;
+        if (iA === iB) return a.name.localeCompare(b.name);
+        return iA - iB;
+    });
+
+    // Return top 20 relevant quick picks
+    return priorityMeds.slice(0, 20); 
+  }, [medicationBank]);
+
+  // Filtered Suggestions with Synonym Support
+  const filteredSuggestions = useMemo(() => {
+    if (!newMedName) return [];
+    const q = newMedName.toLowerCase();
+    
+    return medicationBank.filter(med => {
+        if (med.isActive === false) return false;
+        
+        // 1. Direct Name Match
+        if (med.name.toLowerCase().includes(q)) return true;
+        
+        // 2. Synonym/Abbreviation Match
+        // Find synonyms based on the medication name
+        let syns = DRUG_SYNONYMS[med.name];
+        
+        // If exact key match failed, try partial key match (e.g. "Sodium chloride 0.9%")
+        if (!syns) {
+            const key = Object.keys(DRUG_SYNONYMS).find(k => med.name.includes(k));
+            if (key) syns = DRUG_SYNONYMS[key];
+        }
+        
+        if (syns && syns.some(s => s.toLowerCase().includes(q))) return true;
+
+        return false;
+    }).slice(0, 20); // Limit to 20 results for performance
+  }, [newMedName, medicationBank]);
+
+  // Helper to get the synonym that matched the search query for display
+  const getMatchedSynonym = (medName: string, query: string): string | null => {
+    const q = query.toLowerCase();
+    if (medName.toLowerCase().includes(q)) return null; // Matched by name, no need to show synonym
+    
+    let syns = DRUG_SYNONYMS[medName];
+    if (!syns) {
+        const key = Object.keys(DRUG_SYNONYMS).find(k => medName.includes(k));
+        if (key) syns = DRUG_SYNONYMS[key];
+    }
+    
+    const match = syns?.find(s => s.toLowerCase().includes(q));
+    return match || null;
+  };
 
   useEffect(() => {
     setFormData(bed);
     setIsDeleteConfirmOpen(false);
     setIsDiscardConfirmOpen(false);
+    setMedActionConfirm(null);
     setActiveTab('info');
     setNewMedName('');
     setNewMedDose('');
     setNewActionName('');
     setEnableReminder(false);
     setReminderHours(1);
+    setShowSuggestions(false);
+    
+    // Set default action time to now
+    const now = new Date();
+    setNewActionTime(now.toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit' }));
   }, [bed]);
 
   // Check for unsaved changes
@@ -113,7 +245,6 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
   };
 
   const handleConfirmClear = () => {
-    // Construct the empty bed state
     const clearedBed: Bed = {
       ...formData,
       patient: undefined,
@@ -121,20 +252,28 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
       comment: '',
       assignedDoctorId: undefined
     };
-    
-    // Immediately save to parent component (App.tsx)
     onSave(clearedBed);
   };
 
   // --- Action Logic ---
   const addAction = (type: ActionType, name: string) => {
     if (!formData.patient) return;
+    
+    // Construct requested timestamp from today's date + selected time
+    let requestedAtStr = new Date().toISOString();
+    if (newActionTime) {
+      const now = new Date();
+      const [hours, minutes] = newActionTime.split(':').map(Number);
+      now.setHours(hours, minutes, 0, 0);
+      requestedAtStr = now.toISOString();
+    }
+
     const newAction: ClinicalAction = {
       id: `act-${Date.now()}`,
       type,
       name,
       isCompleted: false,
-      requestedAt: new Date().toISOString()
+      requestedAt: requestedAtStr
     };
     setFormData(prev => ({
       ...prev,
@@ -207,6 +346,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
 
     setNewMedName('');
     setNewMedDose('');
+    setShowSuggestions(false);
   };
 
   const applyProtocol = (protocol: { name: string, meds: { name: string, dose: string, route: string }[] }) => {
@@ -235,7 +375,6 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
   };
 
   const repeatMedication = (med: MedicationOrder) => {
-    // When repeating, we generally want a new reminder if enabled
     addMedication(med.name, med.dose, med.route);
   };
 
@@ -260,12 +399,72 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
     }));
   };
 
+  const requestMedStatusChange = (med: MedicationOrder, status: MedicationStatus) => {
+      setMedActionConfirm({ id: med.id, status, name: med.name });
+  };
+  
+  const confirmMedStatusChange = () => {
+      if (!medActionConfirm) return;
+      updateMedicationStatus(medActionConfirm.id, medActionConfirm.status);
+      setMedActionConfirm(null);
+  };
+
+  const handleMedNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setNewMedName(val);
+    setShowSuggestions(true);
+  };
+
+  const selectMedication = (med: MedicationItem) => {
+      setNewMedName(med.name);
+      setNewMedDose(med.dose);
+      setNewMedRoute(med.route);
+      setShowSuggestions(false);
+  };
+
   const isNurse = currentUser.role === 'Nurse';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 text-slate-200 flex flex-col max-h-[90vh]">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 ease-out text-slate-200 flex flex-col max-h-[90vh] relative">
         
+        {/* Medication Action Confirmation Overlay */}
+        {medActionConfirm && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[1px] animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 animate-in zoom-in-95 slide-in-from-bottom-2 duration-200">
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className={`p-3 rounded-full ${medActionConfirm.status === MedicationStatus.GIVEN ? 'bg-green-900/30 text-green-500' : 'bg-red-900/30 text-red-500'}`}>
+                  {medActionConfirm.status === MedicationStatus.GIVEN ? <CheckCircle size={32} /> : <AlertTriangle size={32} />}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-100">
+                    {medActionConfirm.status === MedicationStatus.GIVEN ? 'Patvirtinti suleidimą' : 'Patvirtinti atšaukimą'}
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">
+                    Ar tikrai norite pažymėti vaistą <strong>{medActionConfirm.name}</strong> kaip {medActionConfirm.status === MedicationStatus.GIVEN ? 'suleistą' : 'atšauktą'}?
+                  </p>
+                </div>
+                <div className="flex gap-3 w-full mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMedActionConfirm(null)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition"
+                  >
+                    Atšaukti
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmMedStatusChange}
+                    className={`flex-1 py-2.5 text-white rounded-lg font-bold shadow-lg transition ${medActionConfirm.status === MedicationStatus.GIVEN ? 'bg-green-600 hover:bg-green-700 shadow-green-900/20' : 'bg-red-600 hover:bg-red-700 shadow-red-900/20'}`}
+                  >
+                    Patvirtinti
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-slate-950 text-white p-4 flex justify-between items-center border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
@@ -325,11 +524,11 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                  </button>
               </div>
           ) : (
-             <form id="patient-form" onSubmit={handleSubmit} className="space-y-6">
+             <form id="patient-form" onSubmit={handleSubmit} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
                 
                 {/* --- TAB: INFO --- */}
                 {activeTab === 'info' && (
-                  <div className="space-y-5 animate-in fade-in slide-in-from-left-4 duration-300">
+                  <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
                      {/* Patient Details */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-4">
@@ -513,7 +712,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
 
                 {/* --- TAB: ACTIONS (WORKFLOW) --- */}
                 {activeTab === 'actions' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
                     <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
                        <h3 className="text-sm font-semibold text-slate-300 mb-3">Paskirti tyrimą ar konsultaciją</h3>
                        <div className="flex gap-2 mb-3 flex-wrap">
@@ -545,6 +744,13 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                             onChange={(e) => setNewActionName(e.target.value)}
                             className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none"
                           />
+                          {/* Time Input */}
+                          <input
+                            type="time"
+                            value={newActionTime}
+                            onChange={(e) => setNewActionTime(e.target.value)}
+                            className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none w-24 text-center"
+                          />
                           <button type="button" onClick={() => newActionName && addAction(newActionType, newActionName)} className="bg-blue-600 px-3 rounded text-white"><Plus size={18}/></button>
                        </div>
                     </div>
@@ -566,7 +772,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                   </button>
                                   <div>
                                      <div className={`font-medium text-sm ${action.isCompleted ? 'text-slate-500 line-through' : 'text-slate-200'}`}>{action.name}</div>
-                                     <div className="text-[10px] text-slate-500 uppercase tracking-wide">{action.type}</div>
+                                     <div className="flex gap-2 text-[10px] text-slate-500 uppercase tracking-wide">
+                                       <span>{action.type}</span>
+                                       <span>• {new Date(action.requestedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                     </div>
                                   </div>
                                </div>
                                <button onClick={() => removeAction(action.id)} className="text-slate-600 hover:text-red-400"><X size={16}/></button>
@@ -579,7 +788,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
 
                 {/* --- TAB: MEDICATIONS --- */}
                 {activeTab === 'meds' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
                     
                      {formData.patient.allergies && (
                         <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-lg flex items-center gap-3 text-red-200 mb-4">
@@ -617,29 +826,60 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                              Naujas paskyrimas
                            </h3>
                            
-                           {/* Quick Picks */}
-                           <div className="mb-4 flex flex-wrap gap-2">
-                              {COMMON_ER_DRUGS.map((drug) => (
-                                 <button
-                                   key={drug.name}
-                                   type="button"
-                                   onClick={() => addMedication(drug.name, drug.dose, drug.route)}
-                                   className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-xs text-slate-300 transition"
-                                 >
-                                   {drug.name} {drug.dose}
-                                 </button>
-                              ))}
+                           {/* Quick Picks - Show prioritized common drugs */}
+                           <div className="mb-4">
+                              <label className="text-[10px] uppercase text-slate-500 font-bold mb-2 block tracking-wider">Dažniausi vaistai (Greita parinktis)</label>
+                              <div className="flex flex-wrap gap-2">
+                                  {quickPickMeds.map((drug) => (
+                                     <button
+                                       key={drug.id}
+                                       type="button"
+                                       onClick={() => selectMedication(drug)}
+                                       className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500/50 rounded text-xs text-slate-300 transition flex items-center gap-1.5"
+                                     >
+                                       <span className="font-medium text-slate-200">{drug.name}</span>
+                                       <span className="text-slate-500 border-l border-slate-700 pl-1.5">{drug.dose}</span>
+                                     </button>
+                                  ))}
+                              </div>
                            </div>
 
                            <div className="flex gap-2 items-end mb-3">
-                              <div className="flex-1">
+                              <div className="flex-1 relative">
                                  <input 
                                    type="text" 
-                                   placeholder="Vaisto pavadinimas" 
+                                   placeholder="Vaisto pavadinimas (pvz. NaCl, Ketanov...)" 
                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500"
                                    value={newMedName}
-                                   onChange={(e) => setNewMedName(e.target.value)}
+                                   onChange={handleMedNameChange}
+                                   onFocus={() => setShowSuggestions(true)}
+                                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                   autoComplete="off"
                                  />
+                                 
+                                 {/* Custom Autocomplete Dropdown */}
+                                 {showSuggestions && newMedName && filteredSuggestions.length > 0 && (
+                                   <ul className="absolute z-50 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-150">
+                                      {filteredSuggestions.map((med) => {
+                                        const matchedSynonym = getMatchedSynonym(med.name, newMedName);
+                                        return (
+                                          <li 
+                                            key={med.id}
+                                            onMouseDown={(e) => { e.preventDefault(); selectMedication(med); }} // Use onMouseDown to trigger before onBlur
+                                            className="px-3 py-2 hover:bg-slate-700 cursor-pointer text-sm border-b border-slate-700/50 last:border-0"
+                                          >
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-medium text-slate-200">{med.name}</span>
+                                                {matchedSynonym && <span className="text-xs text-blue-400 font-mono italic">({matchedSynonym})</span>}
+                                            </div>
+                                            <div className="text-xs text-slate-500 mt-0.5">
+                                               {med.dose} • {med.route} {med.category && `• ${med.category}`}
+                                            </div>
+                                          </li>
+                                        );
+                                      })}
+                                   </ul>
+                                 )}
                               </div>
                               <div className="w-20">
                                  <input 
@@ -660,6 +900,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                    <option value="IM">IM</option>
                                    <option value="PO">PO</option>
                                    <option value="SC">SC</option>
+                                   <option value="Inhal">Inhal</option>
+                                   <option value="Nebul">Nebul</option>
+                                   <option value="Topical">Top</option>
+                                   <option value="PR">PR</option>
                                  </select>
                               </div>
                               <button
@@ -715,7 +959,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                          </div>
                        ) : (
                          formData.patient.medications.map((med) => (
-                           <div key={med.id} className={`flex items-center justify-between p-3 rounded-lg border ${med.status === MedicationStatus.GIVEN ? 'bg-green-900/10 border-green-900/30' : med.status === MedicationStatus.CANCELLED ? 'bg-slate-900 border-slate-800 opacity-60' : 'bg-slate-800 border-slate-700'}`}>
+                           <div key={med.id} className={`flex items-center justify-between p-3 rounded-lg border animate-in fade-in slide-in-from-left-2 duration-300 ${med.status === MedicationStatus.GIVEN ? 'bg-green-900/10 border-green-900/30' : med.status === MedicationStatus.CANCELLED ? 'bg-slate-900 border-slate-800 opacity-60' : 'bg-slate-800 border-slate-700'}`}>
                               <div className="flex-1">
                                  <div className="flex items-center gap-2">
                                     <span className={`font-semibold ${med.status === MedicationStatus.GIVEN ? 'text-green-400' : med.status === MedicationStatus.CANCELLED ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
@@ -742,7 +986,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                    <>
                                       <button
                                         type="button"
-                                        onClick={() => updateMedicationStatus(med.id, MedicationStatus.GIVEN)}
+                                        onClick={() => requestMedStatusChange(med, MedicationStatus.GIVEN)}
                                         className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-bold transition shadow-sm"
                                         title="Pažymėti kaip suleistą"
                                       >
@@ -751,7 +995,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                       {!isNurse && (
                                         <button
                                           type="button"
-                                          onClick={() => updateMedicationStatus(med.id, MedicationStatus.CANCELLED)}
+                                          onClick={() => requestMedStatusChange(med, MedicationStatus.CANCELLED)}
                                           className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded transition"
                                           title="Atšaukti paskyrimą"
                                         >
@@ -797,7 +1041,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
           <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
              <div className="flex gap-3 items-center">
                 {isDiscardConfirmOpen ? (
-                  <div className="flex-1 flex items-center justify-end gap-2 bg-yellow-900/20 border border-yellow-900/50 rounded-lg px-3 py-1.5 animate-in slide-in-from-right-2 duration-200">
+                  <div className="flex-1 flex items-center justify-end gap-2 bg-yellow-900/20 border border-yellow-900/50 rounded-lg px-3 py-1.5 animate-in slide-in-from-bottom-1 duration-200 ease-out">
                     <AlertTriangle size={16} className="text-yellow-500 ml-1" />
                     <span className="text-xs text-yellow-200 font-semibold px-1">Turite neišsaugotų pakeitimų.</span>
                     <button
@@ -842,7 +1086,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                     </button>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2 bg-red-900/20 border border-red-900/50 rounded-lg px-2 py-1.5 animate-in slide-in-from-left-2 duration-200 w-full justify-between">
+                  <div className="flex items-center gap-2 bg-red-900/20 border border-red-900/50 rounded-lg px-2 py-1.5 animate-in slide-in-from-bottom-1 duration-200 ease-out w-full justify-between">
                     <div className="flex items-center gap-2">
                         <AlertTriangle size={16} className="text-red-500 ml-1" />
                         <span className="text-xs text-red-200 font-semibold px-1">Ar tikrai ištrinti?</span>

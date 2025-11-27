@@ -1,16 +1,20 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { STATUS_COLORS, TRIAGE_COLORS } from '../constants';
-import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse } from 'lucide-react';
+import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X } from 'lucide-react';
 
 interface BedTableViewProps {
   beds: Bed[];
   doctors: Staff[];
   onRowClick: (bed: Bed) => void;
+  onDischarge: (bed: Bed) => void;
 }
 
-const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }) => {
-  // Group beds by section (Nurse Name) to match the screenshot structure
+const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, onDischarge }) => {
+  const [confirmDischargeId, setConfirmDischargeId] = useState<string | null>(null);
+
+  // Group beds by section (Nurse Name)
   const groupedBeds = React.useMemo(() => {
     const groups: Record<string, Bed[]> = {};
     beds.forEach(bed => {
@@ -72,6 +76,22 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
     return { text: `${h}h ${m}m`, isOverdue };
   };
 
+  const handleDischargeClick = (e: React.MouseEvent, bedId: string) => {
+    e.stopPropagation();
+    setConfirmDischargeId(bedId);
+  };
+
+  const confirmDischarge = (e: React.MouseEvent, bed: Bed) => {
+    e.stopPropagation();
+    onDischarge(bed);
+    setConfirmDischargeId(null);
+  };
+
+  const cancelDischarge = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDischargeId(null);
+  };
+
   return (
     <div className="overflow-x-auto border-0 bg-slate-900 shadow-sm">
       <table className="w-full text-sm border-collapse">
@@ -87,7 +107,8 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
             <th className="px-2 py-3 text-center border-r border-slate-800 w-12" title="Vaistai"><Pill size={14} className="mx-auto" /></th>
             <th className="px-3 py-3 text-center border-r border-slate-800 w-20">Atvyko</th>
             <th className="px-3 py-3 text-center border-r border-slate-800 w-24">Trukmė</th>
-            <th className="px-4 py-3 text-left">Komentaras</th>
+            <th className="px-4 py-3 text-left border-r border-slate-800">Komentaras</th>
+            <th className="px-3 py-3 text-center w-28">Išvykimas</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
@@ -97,7 +118,7 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
                 const isFirst = index === 0;
                 const rowSpan = sectionBeds.length;
                 const isIT = bed.label.startsWith('IT');
-                const isAmb = bed.label.startsWith('A') && !bed.label.startsWith('Arm'); // Check A but not Armanda if label changes
+                const isAmb = bed.label.startsWith('A') && !bed.label.startsWith('Arm');
                 const isSpecial = bed.label.startsWith('S') || bed.label.startsWith('P');
 
                 let bedLabelClass = 'bg-slate-800 text-slate-400';
@@ -112,10 +133,9 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
                 return (
                   <tr 
                     key={bed.id} 
-                    onClick={() => onRowClick(bed)}
-                    className="hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                    className="hover:bg-slate-800/50 transition-colors group"
                   >
-                    {/* Nurse Column - Merged Cells */}
+                    {/* Nurse Column */}
                     {isFirst && (
                       <td 
                         rowSpan={rowSpan} 
@@ -125,18 +145,16 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
                       </td>
                     )}
                     
-                    {/* Bed Label */}
-                    <td className={`px-2 py-2 text-center font-bold border-r border-slate-800 ${bedLabelClass}`}>
+                    {/* Interactive Cells */}
+                    <td onClick={() => onRowClick(bed)} className={`px-2 py-2 text-center font-bold border-r border-slate-800 cursor-pointer ${bedLabelClass}`}>
                       {bed.label}
                     </td>
 
-                    {/* Doctor */}
-                    <td className="px-3 py-2 border-r border-slate-800 text-slate-400">
+                    <td onClick={() => onRowClick(bed)} className="px-3 py-2 border-r border-slate-800 text-slate-400 cursor-pointer">
                       {getDoctorName(bed.assignedDoctorId)}
                     </td>
 
-                    {/* Category */}
-                    <td className="px-1 py-1 border-r border-slate-800 text-center">
+                    <td onClick={() => onRowClick(bed)} className="px-1 py-1 border-r border-slate-800 text-center cursor-pointer">
                        {bed.patient && (
                          <span className={`inline-block w-6 h-6 leading-6 rounded font-bold text-xs ${TRIAGE_COLORS[bed.patient.triageCategory] || 'bg-slate-700'}`}>
                            {bed.patient.triageCategory}
@@ -144,13 +162,11 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
                        )}
                     </td>
 
-                    {/* Patient Name */}
-                    <td className={`px-4 py-2 border-r border-slate-800 font-medium ${!bed.patient ? 'text-slate-600 italic' : 'text-slate-200'}`}>
+                    <td onClick={() => onRowClick(bed)} className={`px-4 py-2 border-r border-slate-800 font-medium cursor-pointer ${!bed.patient ? 'text-slate-600 italic' : 'text-slate-200'}`}>
                       {bed.patient ? bed.patient.name : 'Laisva'}
                     </td>
 
-                    {/* Status */}
-                    <td className="px-2 py-1 border-r border-slate-800">
+                    <td onClick={() => onRowClick(bed)} className="px-2 py-1 border-r border-slate-800 cursor-pointer">
                        {bed.status !== PatientStatus.EMPTY && (
                          <div className={`px-2 py-1 rounded text-xs font-semibold border flex items-center justify-between shadow-sm ${STATUS_COLORS[bed.status]}`}>
                             <span className="truncate">{bed.status}</span>
@@ -159,41 +175,19 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
                        )}
                     </td>
 
-                    {/* Actions (Labs/Xray) */}
-                    <td className="px-2 py-1 border-r border-slate-800 text-center">
+                    <td onClick={() => onRowClick(bed)} className="px-2 py-1 border-r border-slate-800 text-center cursor-pointer">
                        {pendingActions && pendingActions.length > 0 && (
                           <div className="flex justify-center gap-1">
-                             {pendingActions.some(a => a.type === 'LABS') && (
-                               <span title="Kraujas">
-                                 <Microscope size={14} className="text-blue-400" />
-                               </span>
-                             )}
-                             {pendingActions.some(a => a.type === 'XRAY' || a.type === 'CT') && (
-                               <span title="Radiologija">
-                                 <FileImage size={14} className="text-yellow-400" />
-                               </span>
-                             )}
-                             {pendingActions.some(a => a.type === 'ULTRASOUND') && (
-                               <span title="Ultragarsas">
-                                 <Waves size={14} className="text-cyan-400" />
-                               </span>
-                             )}
-                             {pendingActions.some(a => a.type === 'EKG') && (
-                               <span title="EKG">
-                                 <HeartPulse size={14} className="text-red-400" />
-                               </span>
-                             )}
-                             {pendingActions.some(a => a.type === 'CONSULT') && (
-                               <span title="Konsultacija">
-                                 <ClipboardList size={14} className="text-purple-400" />
-                               </span>
-                             )}
+                             {pendingActions.some(a => a.type === 'LABS') && <Microscope size={14} className="text-blue-400" />}
+                             {pendingActions.some(a => a.type === 'XRAY' || a.type === 'CT') && <FileImage size={14} className="text-yellow-400" />}
+                             {pendingActions.some(a => a.type === 'ULTRASOUND') && <Waves size={14} className="text-cyan-400" />}
+                             {pendingActions.some(a => a.type === 'EKG') && <HeartPulse size={14} className="text-red-400" />}
+                             {pendingActions.some(a => a.type === 'CONSULT') && <ClipboardList size={14} className="text-purple-400" />}
                           </div>
                        )}
                     </td>
 
-                    {/* Meds */}
-                    <td className="px-2 py-1 border-r border-slate-800 text-center">
+                    <td onClick={() => onRowClick(bed)} className="px-2 py-1 border-r border-slate-800 text-center cursor-pointer">
                        {medsStatus && (
                          <div className={`inline-flex items-center gap-1 ${medsStatus.color}`}>
                            <Pill size={14} />
@@ -202,31 +196,62 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick }
                        )}
                     </td>
 
-                    {/* Arrival Time */}
-                    <td className="px-3 py-2 border-r border-slate-800 text-center font-mono text-xs text-slate-400">
+                    <td onClick={() => onRowClick(bed)} className="px-3 py-2 border-r border-slate-800 text-center font-mono text-xs text-slate-400 cursor-pointer">
                         {bed.patient?.arrivalTime || '-'}
                     </td>
 
-                    {/* Duration */}
-                    <td className={`px-3 py-2 border-r border-slate-800 text-center font-mono text-xs ${isOverdue ? 'text-red-400 font-bold bg-red-900/10' : 'text-slate-400'}`}>
+                    <td onClick={() => onRowClick(bed)} className={`px-3 py-2 border-r border-slate-800 text-center font-mono text-xs cursor-pointer ${isOverdue ? 'text-red-400 font-bold bg-red-900/10' : 'text-slate-400'}`}>
                         <div className="flex items-center justify-center gap-1">
                           {isOverdue && <AlertTriangle size={12} className="text-red-500 animate-pulse" />}
                           {durationText}
                         </div>
                     </td>
 
-                    {/* Comment */}
-                    <td className="px-4 py-2 text-slate-400 relative">
+                    <td onClick={() => onRowClick(bed)} className="px-4 py-2 text-slate-400 border-r border-slate-800 relative cursor-pointer">
                        <div className="truncate max-w-xs" title={bed.comment}>
                         {bed.comment}
                        </div>
                     </td>
+
+                    {/* Discharge Action - Independent Cell */}
+                    <td className="px-2 py-2 text-center">
+                       {bed.patient && (
+                          confirmDischargeId === bed.id ? (
+                            <div className="flex items-center justify-center gap-1 animate-in zoom-in duration-200">
+                                <button
+                                    type="button"
+                                    onClick={(e) => confirmDischarge(e, bed)}
+                                    className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded shadow-lg shadow-red-900/30"
+                                    title="Patvirtinti"
+                                >
+                                    <Check size={14} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={cancelDischarge}
+                                    className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+                                    title="Atšaukti"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                          ) : (
+                            <button 
+                                type="button"
+                                onClick={(e) => handleDischargeClick(e, bed.id)}
+                                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition flex items-center justify-center mx-auto"
+                                title="Išrašyti pacientą"
+                            >
+                                <LogOut size={16} />
+                            </button>
+                          )
+                       )}
+                    </td>
                   </tr>
                 );
               })}
-              {/* Divider between groups */}
               <tr className="bg-slate-800 h-1">
-                <td colSpan={11}></td>
+                <td colSpan={12}></td>
               </tr>
             </React.Fragment>
           ))}
