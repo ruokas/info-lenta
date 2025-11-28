@@ -81,9 +81,10 @@ export interface Staff {
   id: string;
   name: string;
   role: 'Doctor' | 'Nurse' | 'Assistant' | 'Admin';
-  isActive?: boolean; // Controlled by the system based on WorkShift
+  isActive?: boolean; // Controlled by the system based on WorkShift (Shift Manager)
   currentShiftId?: string; // Link to active shift
   assignedSection?: string; // NEW: Physical section assignment (e.g. '1 Postas')
+  isDisabled?: boolean; // NEW: Temporarily disabled in Bank (e.g. Vacation/Long leave)
 }
 
 export interface UserProfile extends Staff {
@@ -97,6 +98,7 @@ export interface Patient {
   symptoms: string;
   triageCategory: TriageCategory;
   arrivalTime: string;
+  registeredBy?: string; // NEW: Nurse ID who performed triage
   allergies?: string; // NEW: Allergies field
   medications?: MedicationOrder[];
   actions?: ClinicalAction[]; // NEW: Workflow actions
@@ -144,6 +146,15 @@ export interface AssignmentLog {
   patientName: string;
   triageCategory: TriageCategory;
   assignedAt: string; // ISO timestamp
+}
+
+// NEW: Registration Log for Triage stats
+export interface RegistrationLog {
+  id: string;
+  nurseId: string;
+  patientName: string;
+  triageCategory: TriageCategory;
+  timestamp: string;
 }
 
 export interface AppNotification {

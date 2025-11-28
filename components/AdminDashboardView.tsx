@@ -1,0 +1,333 @@
+
+import React, { useMemo } from 'react';
+import { Bed, Staff, PatientLogEntry, RegistrationLog, PatientStatus } from '../types';
+import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight } from 'lucide-react';
+import { TRIAGE_COLORS, PHYSICAL_SECTIONS } from '../constants';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
+
+interface AdminDashboardViewProps {
+  beds: Bed[];
+  doctors: Staff[];
+  nurses: Staff[];
+  patientLogs: PatientLogEntry[];
+  registrationLogs: RegistrationLog[];
+  onNavigate: (view: 'settings' | 'reports' | 'shift' | 'table') => void;
+}
+
+const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
+  beds,
+  doctors,
+  nurses,
+  patientLogs,
+  registrationLogs,
+  onNavigate
+}) => {
+  
+  // --- STATISTICS CALCULATION ---
+  const stats = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    // 1. Occupancy
+    const totalBeds = beds.length;
+    const occupiedBeds = beds.filter(b => b.status !== PatientStatus.EMPTY).length;
+    const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+
+    // 2. Flow (Today)
+    // Arrivals: Based on Registration Logs for today
+    const arrivalsToday = registrationLogs.filter(l => l.timestamp.startsWith(todayStr)).length;
+    // Discharges: Based on Patient Logs for today
+    const dischargesToday = patientLogs.filter(l => l.dischargeTime.startsWith(todayStr)).length;
+
+    // 3. Critical Cases (Active)
+    const criticalCount = beds.filter(b => b.patient && b.patient.triageCategory <= 2).length;
+    const activePatients = beds.filter(b => b.patient).length;
+    const criticalRate = activePatients > 0 ? Math.round((criticalCount / activePatients) * 100) : 0;
+
+    // 4. Staff Active
+    const activeDoctors = doctors.filter(d => d.isActive).length;
+    const activeNurses = nurses.filter(n => n.isActive).length;
+
+    // 5. Section Load
+    const sectionLoad = PHYSICAL_SECTIONS.map(section => {
+        const sectionBeds = beds.filter(b => b.section === section);
+        const total = sectionBeds.length;
+        if (total === 0) return null;
+        const occupied = sectionBeds.filter(b => b.status !== PatientStatus.EMPTY).length;
+        return {
+            name: section,
+            occupied,
+            total,
+            rate: Math.round((occupied / total) * 100)
+        };
+    }).filter(Boolean) as {name: string, occupied: number, total: number, rate: number}[];
+
+    // 6. Triage Distribution (Active)
+    const triageCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    beds.forEach(b => {
+        if (b.patient && b.patient.triageCategory) {
+            const cat = b.patient.triageCategory as number;
+            triageCounts[cat] = (triageCounts[cat] || 0) + 1;
+        }
+    });
+
+    return {
+        occupancyRate,
+        occupiedBeds,
+        totalBeds,
+        arrivalsToday,
+        dischargesToday,
+        criticalCount,
+        criticalRate,
+        activeDoctors,
+        activeNurses,
+        sectionLoad,
+        triageCounts
+    };
+  }, [beds, doctors, nurses, patientLogs, registrationLogs]);
+
+  const isDbConnected = isSupabaseConfigured();
+
+  // --- CHART HELPERS ---
+  // Simple CSS Conic Gradient for Donut Chart
+  const getDonutGradient = () => {
+      const counts = Object.values(stats.triageCounts) as number[];
+      const total = counts.reduce((a: number, b: number) => a + b, 0);
+      if (total === 0) return 'conic-gradient(#334155 0% 100%)'; // Empty slate
+
+      let currentDeg = 0;
+      const colors: Record<string, string> = {
+          '1': '#2563EB', // Blue
+          '2': '#DC2626', // Red
+          '3': '#EAB308', // Yellow
+          '4': '#16A34A', // Green
+          '5': '#F1F5F9'  // White
+      };
+
+      const segments = Object.entries(stats.triageCounts).map(([cat, count]) => {
+          const val = count as number;
+          const deg = (val / total) * 360;
+          const color = colors[cat] || '#334155';
+          const segment = `${color} ${currentDeg}deg ${currentDeg + deg}deg`;
+          currentDeg += deg;
+          return segment;
+      });
+
+      return `conic-gradient(${segments.join(', ')})`;
+  };
+
+  return (
+    <div className="p-6 md:p-8 max-w-7xl mx-auto h-full overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+            <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
+                <LayoutDashboard size={32} className="text-blue-500" />
+                Valdymo Skydas (Admin)
+            </h1>
+            <p className="text-slate-400 mt-1">Skyriaus operatyvinė apžvalga ir valdymo centras.</p>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${isDbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-slate-600'}`}></div>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                {isDbConnected ? 'System Online' : 'Local Mode'}
+            </span>
+        </div>
+      </div>
+
+      {/* KPI CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+         {/* Occupancy */}
+         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition">
+                <Users size={80} />
+            </div>
+            <div className="flex justify-between items-start mb-4">
+                <div className="p-2.5 bg-blue-900/20 text-blue-400 rounded-lg">
+                    <Activity size={24} />
+                </div>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${stats.occupancyRate > 85 ? 'bg-red-900/30 text-red-400' : 'bg-emerald-900/30 text-emerald-400'}`}>
+                    {stats.occupancyRate}% Užimtumas
+                </span>
+            </div>
+            <div className="text-3xl font-bold text-slate-100 mb-1">{stats.occupiedBeds} <span className="text-sm text-slate-500 font-normal">/ {stats.totalBeds}</span></div>
+            <p className="text-sm text-slate-400">Užimtos lovos</p>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full mt-4 overflow-hidden">
+                <div className={`h-full rounded-full ${stats.occupancyRate > 85 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${stats.occupancyRate}%` }}></div>
+            </div>
+         </div>
+
+         {/* Patient Flow */}
+         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition">
+                <TrendingUp size={80} />
+            </div>
+            <div className="flex justify-between items-start mb-4">
+                <div className="p-2.5 bg-emerald-900/20 text-emerald-400 rounded-lg">
+                    <TrendingUp size={24} />
+                </div>
+                <span className="text-xs font-bold px-2 py-1 rounded bg-slate-800 text-slate-400">Šiandien</span>
+            </div>
+            <div className="flex items-end gap-2 mb-1">
+                <span className="text-3xl font-bold text-slate-100">{stats.arrivalsToday}</span>
+                <span className="text-emerald-500 text-sm font-bold mb-1.5 flex items-center"><ArrowRight size={12} className="-rotate-45"/> In</span>
+                <span className="text-slate-600 text-2xl font-light mb-1">/</span>
+                <span className="text-3xl font-bold text-slate-100">{stats.dischargesToday}</span>
+                <span className="text-blue-500 text-sm font-bold mb-1.5 flex items-center"><ArrowRight size={12} className="rotate-45"/> Out</span>
+            </div>
+            <p className="text-sm text-slate-400">Pacientų srautas</p>
+         </div>
+
+         {/* Critical Cases */}
+         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition">
+                <AlertTriangle size={80} />
+            </div>
+            <div className="flex justify-between items-start mb-4">
+                <div className="p-2.5 bg-red-900/20 text-red-400 rounded-lg">
+                    <AlertTriangle size={24} />
+                </div>
+            </div>
+            <div className="text-3xl font-bold text-slate-100 mb-1">{stats.criticalCount}</div>
+            <p className="text-sm text-slate-400">Sunkūs pacientai (1-2 Kat.)</p>
+            <div className="mt-4 text-xs text-red-400 bg-red-900/10 border border-red-900/30 px-2 py-1 rounded inline-block">
+                {stats.criticalRate}% viso srauto
+            </div>
+         </div>
+
+         {/* Active Staff */}
+         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition">
+                <Briefcase size={80} />
+            </div>
+            <div className="flex justify-between items-start mb-4">
+                <div className="p-2.5 bg-purple-900/20 text-purple-400 rounded-lg">
+                    <Users size={24} />
+                </div>
+                <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${stats.activeDoctors + stats.activeNurses > 0 ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            </div>
+            <div className="flex flex-col gap-1">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+                    <span className="text-sm text-slate-400">Gydytojai</span>
+                    <span className="text-lg font-bold text-slate-200">{stats.activeDoctors}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1">
+                    <span className="text-sm text-slate-400">Slaugytojos</span>
+                    <span className="text-lg font-bold text-slate-200">{stats.activeNurses}</span>
+                </div>
+            </div>
+         </div>
+      </div>
+
+      {/* MIDDLE SECTION: VISUALIZATIONS */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+         {/* Section Load Chart */}
+         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2">
+                <Activity size={18} className="text-blue-500"/>
+                Zonų apkrova (Real-time)
+            </h3>
+            <div className="space-y-4">
+                {stats.sectionLoad.map(section => (
+                    <div key={section.name} className="space-y-1">
+                        <div className="flex justify-between text-xs font-medium text-slate-400">
+                            <span>{section.name}</span>
+                            <span className={section.rate > 90 ? 'text-red-400' : 'text-slate-300'}>{section.occupied}/{section.total} ({section.rate}%)</span>
+                        </div>
+                        <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden flex">
+                            <div 
+                                className={`h-full rounded-full transition-all duration-1000 ${
+                                    section.rate > 90 ? 'bg-red-500' : 
+                                    section.rate > 70 ? 'bg-yellow-500' : 
+                                    section.name === 'Ambulatorija' ? 'bg-amber-500' : 'bg-blue-600'
+                                }`} 
+                                style={{ width: `${section.rate}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+         </div>
+
+         {/* Triage Donut Chart */}
+         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col">
+            <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2">
+                <AlertTriangle size={18} className="text-yellow-500"/>
+                Kategorijų pasiskirstymas
+            </h3>
+            <div className="flex-1 flex items-center justify-center relative">
+                {/* Donut */}
+                <div 
+                    className="w-48 h-48 rounded-full relative"
+                    style={{ background: getDonutGradient() }}
+                >
+                    <div className="absolute inset-4 bg-slate-900 rounded-full flex flex-col items-center justify-center">
+                        <span className="text-3xl font-bold text-slate-200">{stats.occupiedBeds}</span>
+                        <span className="text-xs text-slate-500 uppercase">Pacientai</span>
+                    </div>
+                </div>
+            </div>
+            {/* Legend */}
+            <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-600"></div> Kat 1 (Reanim): {stats.triageCounts[1]}</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-600"></div> Kat 2 (Skubi): {stats.triageCounts[2]}</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Kat 3 (Skubi): {stats.triageCounts[3]}</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-600"></div> Kat 4 (Std): {stats.triageCounts[4]}</div>
+            </div>
+         </div>
+      </div>
+
+      {/* BOTTOM SECTION: QUICK ACTIONS */}
+      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Valdymo Centras</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+         <button 
+            onClick={() => onNavigate('settings')}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500/50 p-4 rounded-xl text-left transition group"
+         >
+            <div className="mb-3 bg-blue-900/20 text-blue-400 p-2.5 rounded-lg w-fit group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <Users size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Personalo Bankas</div>
+            <div className="text-xs text-slate-500 mt-1">Kurti / Redaguoti darbuotojus</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('settings')}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-yellow-500/50 p-4 rounded-xl text-left transition group"
+         >
+            <div className="mb-3 bg-yellow-900/20 text-yellow-400 p-2.5 rounded-lg w-fit group-hover:bg-yellow-600 group-hover:text-white transition-colors">
+                <Pill size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Vaistų Registras</div>
+            <div className="text-xs text-slate-500 mt-1">Valdyti vaistus ir protokolus</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('reports')}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500/50 p-4 rounded-xl text-left transition group"
+         >
+            <div className="mb-3 bg-emerald-900/20 text-emerald-400 p-2.5 rounded-lg w-fit group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <FileBarChart size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Ataskaitos</div>
+            <div className="text-xs text-slate-500 mt-1">Registracijų ir srautų statistika</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('shift')}
+            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-purple-500/50 p-4 rounded-xl text-left transition group"
+         >
+            <div className="mb-3 bg-purple-900/20 text-purple-400 p-2.5 rounded-lg w-fit group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                <Briefcase size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Pamainos</div>
+            <div className="text-xs text-slate-500 mt-1">Grafikų planavimas</div>
+         </button>
+      </div>
+
+    </div>
+  );
+};
+
+export default AdminDashboardView;

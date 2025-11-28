@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { Staff, UserProfile, MedicationItem } from '../types';
-import { RefreshCw, RotateCcw, Database, Save, CheckCircle, Edit2, X, Check, AlertTriangle, Pill, Search, Eye, EyeOff, ChevronDown, ChevronRight, Layers, Filter, FolderInput, FolderMinus, Trash2 } from 'lucide-react';
+import { RefreshCw, RotateCcw, Database, Save, CheckCircle, Edit2, X, Check, AlertTriangle, Pill, Search, Eye, EyeOff, ChevronDown, ChevronRight, Layers, Filter, FolderInput, FolderMinus, Trash2, Users, UserPlus, MapPin, UserX, UserCheck } from 'lucide-react';
 import { isSupabaseConfigured, updateSupabaseConfig, clearSupabaseConfig } from '../lib/supabaseClient';
+import { PHYSICAL_SECTIONS } from '../constants';
 
 interface SettingsViewProps {
   doctors: Staff[];
@@ -18,6 +19,8 @@ interface SettingsViewProps {
 }
 
 const SettingsView: React.FC<SettingsViewProps> = ({
+  doctors, setDoctors,
+  nurses, setNurses,
   medicationBank, setMedications,
   autoRefresh, setAutoRefresh,
   onResetData,
@@ -46,6 +49,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingCategoryName, setEditingCategoryName] = useState<string | null>(null);
   const [tempCategoryName, setTempCategoryName] = useState('');
   
+  // Staff Management State
+  const [activeStaffTab, setActiveStaffTab] = useState<'doctors' | 'nurses'>('doctors');
+  const [newStaffName, setNewStaffName] = useState('');
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [editStaffName, setEditStaffName] = useState('');
+  const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
+
   // Supabase Config State
   const [sbUrl, setSbUrl] = useState(localStorage.getItem('sb_url') || '');
   const [sbKey, setSbKey] = useState(localStorage.getItem('sb_key') || '');
@@ -55,6 +65,64 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
   const isAdmin = currentUser.role === 'Admin';
+
+  // --- Staff Management Logic ---
+  const handleAddStaff = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaffName.trim()) return;
+
+    const newStaff: Staff = {
+        id: `${activeStaffTab === 'doctors' ? 'd' : 'n'}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: newStaffName.trim(),
+        role: activeStaffTab === 'doctors' ? 'Doctor' : 'Nurse',
+        isActive: false, // Default to inactive in shift
+        isDisabled: false // Default to enabled in bank
+    };
+
+    if (activeStaffTab === 'doctors') {
+        setDoctors([...doctors, newStaff]);
+    } else {
+        setNurses([...nurses, newStaff]);
+    }
+    setNewStaffName('');
+  };
+
+  const startEditingStaff = (staff: Staff) => {
+      setDeletingStaffId(null);
+      setEditingStaffId(staff.id);
+      setEditStaffName(staff.name);
+  };
+
+  const saveEditStaff = () => {
+      if (!editStaffName.trim()) return;
+      
+      if (activeStaffTab === 'doctors') {
+          setDoctors(doctors.map(d => d.id === editingStaffId ? { ...d, name: editStaffName.trim() } : d));
+      } else {
+          setNurses(nurses.map(n => n.id === editingStaffId ? { ...n, name: editStaffName.trim() } : n));
+      }
+      setEditingStaffId(null);
+  };
+
+  const toggleStaffDisabled = (staff: Staff) => {
+      const updatedStaff = { ...staff, isDisabled: !staff.isDisabled };
+      if (activeStaffTab === 'doctors') {
+          setDoctors(doctors.map(d => d.id === staff.id ? updatedStaff : d));
+      } else {
+          setNurses(nurses.map(n => n.id === staff.id ? updatedStaff : n));
+      }
+  };
+
+  const executeDeleteStaff = (id: string) => {
+      if (activeStaffTab === 'doctors') {
+          setDoctors(doctors.filter(d => d.id !== id));
+      } else {
+          setNurses(nurses.filter(n => n.id !== id));
+      }
+      setDeletingStaffId(null);
+  };
+
+  // --- Medication Logic ---
 
   const handleAddMedication = (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,6 +296,109 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center gap-3 text-red-200">
            <Database size={20} className="text-red-500" />
            <p>Personalo sąrašus ir vaistų banką redaguoti gali tik <strong>Administratorius</strong>.</p>
+        </div>
+      )}
+
+      {/* Staff Bank Management */}
+      {isAdmin && (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+           <div className="flex flex-col md:flex-row items-center justify-between mb-6 border-b border-slate-800 pb-4 gap-4">
+              <div className="flex items-center gap-2 text-slate-100 text-lg font-semibold shrink-0">
+                  <Users className="text-emerald-500" size={20} />
+                  <h3>Personalo Bankas (Registras)</h3>
+              </div>
+              
+              <div className="flex bg-slate-800 p-1 rounded-lg">
+                 <button
+                   onClick={() => setActiveStaffTab('doctors')}
+                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${activeStaffTab === 'doctors' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                 >
+                   Gydytojai
+                 </button>
+                 <button
+                   onClick={() => setActiveStaffTab('nurses')}
+                   className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${activeStaffTab === 'nurses' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                 >
+                   Slaugytojos
+                 </button>
+              </div>
+           </div>
+
+           <div className="space-y-4">
+              {/* Add New Staff Form */}
+              <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800 flex gap-3 items-end">
+                 <div className="flex-1">
+                    <label className="block text-[10px] uppercase text-slate-500 font-semibold mb-1">Vardas Pavardė</label>
+                    <input 
+                      type="text" 
+                      value={newStaffName}
+                      onChange={(e) => setNewStaffName(e.target.value)}
+                      placeholder="Įveskite vardą..."
+                      className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                 </div>
+                 <button 
+                   onClick={handleAddStaff}
+                   disabled={!newStaffName.trim()}
+                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold disabled:opacity-50 flex items-center gap-2"
+                 >
+                   <UserPlus size={16} /> Pridėti
+                 </button>
+              </div>
+
+              {/* Staff List */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1">
+                 {(activeStaffTab === 'doctors' ? doctors : nurses).map(staff => (
+                    <div key={staff.id} className={`bg-slate-800 border rounded-lg p-3 flex items-center justify-between group transition ${staff.isDisabled ? 'border-red-900/30 opacity-60' : 'border-slate-700 hover:border-slate-600'}`}>
+                       {editingStaffId === staff.id ? (
+                          <div className="flex-1 flex gap-2">
+                             <input 
+                               value={editStaffName}
+                               onChange={(e) => setEditStaffName(e.target.value)}
+                               className="flex-1 bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none"
+                               autoFocus
+                             />
+                             <button onClick={saveEditStaff} className="p-1 bg-green-900/30 text-green-500 rounded hover:bg-green-700 hover:text-white"><Check size={14}/></button>
+                             <button onClick={() => setEditingStaffId(null)} className="p-1 bg-red-900/30 text-red-500 rounded hover:bg-red-700 hover:text-white"><X size={14}/></button>
+                          </div>
+                       ) : deletingStaffId === staff.id ? (
+                          <div className="flex-1 flex items-center justify-between animate-in fade-in zoom-in-95 duration-200">
+                             <span className="text-red-400 text-xs font-bold">Ištrinti visam laikui?</span>
+                             <div className="flex gap-2">
+                                <button onClick={() => executeDeleteStaff(staff.id)} className="px-2 py-1 bg-red-600 text-white text-xs rounded font-bold">TAIP</button>
+                                <button onClick={() => setDeletingStaffId(null)} className="px-2 py-1 bg-slate-700 text-slate-300 text-xs rounded">NE</button>
+                             </div>
+                          </div>
+                       ) : (
+                          <>
+                             <div className="flex items-center gap-3 overflow-hidden">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${staff.isDisabled ? 'bg-slate-700 text-slate-500' : activeStaffTab === 'doctors' ? 'bg-blue-900/50 text-blue-300' : 'bg-emerald-900/50 text-emerald-300'}`}>
+                                   {staff.name.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="truncate">
+                                   <div className={`font-medium truncate text-sm flex items-center gap-2 ${staff.isDisabled ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
+                                      {staff.name}
+                                      {staff.isDisabled && <span className="no-underline text-[10px] bg-red-900/20 text-red-400 px-1.5 rounded border border-red-900/30">Atostogos</span>}
+                                   </div>
+                                </div>
+                             </div>
+                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                <button 
+                                    onClick={() => toggleStaffDisabled(staff)} 
+                                    className={`p-1.5 rounded hover:bg-slate-700 ${staff.isDisabled ? 'text-green-500 hover:text-green-400' : 'text-slate-500 hover:text-amber-400'}`}
+                                    title={staff.isDisabled ? "Aktyvuoti (Grįžo į darbą)" : "Laikinai išjungti (Atostogos/Biuletenis)"}
+                                >
+                                    {staff.isDisabled ? <UserCheck size={14}/> : <UserX size={14}/>}
+                                </button>
+                                <button onClick={() => startEditingStaff(staff)} className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700 rounded"><Edit2 size={14}/></button>
+                                <button onClick={() => setDeletingStaffId(staff.id)} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded"><Trash2 size={14}/></button>
+                             </div>
+                          </>
+                       )}
+                    </div>
+                 ))}
+              </div>
+           </div>
         </div>
       )}
 

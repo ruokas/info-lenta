@@ -1,0 +1,381 @@
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { Bed, Staff, UserProfile, MedicationStatus } from '../types';
+import { TRIAGE_COLORS, STATUS_COLORS } from '../constants';
+import { ClipboardList, Filter, Search, Pill, Microscope, FileImage, Activity, Clock, CheckCircle, ArrowRight, User, Stethoscope, Syringe, Waves, HeartPulse } from 'lucide-react';
+
+interface TasksViewProps {
+  beds: Bed[];
+  doctors: Staff[];
+  currentUser: UserProfile;
+  onUpdateBed: (bed: Bed) => void;
+}
+
+type TaskType = 'MEDICATION' | 'ACTION';
+
+interface TaskItem {
+  id: string;
+  uniqueKey: string; // for React key
+  type: TaskType;
+  subType?: string; // e.g. 'IV', 'XRAY'
+  bed: Bed;
+  patientName: string;
+  triageCategory: number;
+  description: string;
+  details: string;
+  timestamp: string; // ISO
+  isOverdue: boolean;
+  isUrgent: boolean;
+  doctorName?: string;
+}
+
+const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpdateBed }) => {
+  // Default filter to current nurse's section if available
+  const defaultSection = currentUser.role === 'Nurse' && currentUser.assignedSection ? currentUser.assignedSection : 'ALL';
+  
+  // Initialize state from localStorage or defaults
+  const [filterSection, setFilterSection] = useState(() => localStorage.getItem('er_tasks_filter_section') || defaultSection);
+  const [filterDoctor, setFilterDoctor] = useState(() => localStorage.getItem('er_tasks_filter_doctor') || 'ALL');
+  const [filterType, setFilterType] = useState<'ALL' | 'MEDS' | 'ACTIONS'>(() => (localStorage.getItem('er_tasks_filter_type') as any) || 'ALL');
+  const [searchQuery, setSearchQuery] = useState(() => localStorage.getItem('er_tasks_search_query') || '');
+  
+  const [completingIds, setCompletingIds] = useState<string[]>([]); // For animation
+
+  // Persist filters to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('er_tasks_filter_section', filterSection);
+    localStorage.setItem('er_tasks_filter_doctor', filterDoctor);
+    localStorage.setItem('er_tasks_filter_type', filterType);
+    localStorage.setItem('er_tasks_search_query', searchQuery);
+  }, [filterSection, filterDoctor, filterType, searchQuery]);
+
+  // Derive all pending tasks from beds
+  const tasks = useMemo(() => {
+    const allTasks: TaskItem[] = [];
+    const now = new Date().getTime();
+
+    beds.forEach(bed => {
+      if (!bed.patient || bed.status === 'Laisva') return;
+
+      const docName = doctors.find(d => d.id === bed.assignedDoctorId)?.name;
+
+      // 1. Medications
+      if (bed.patient.medications) {
+        bed.patient.medications.forEach(med => {
+          if (med.status === MedicationStatus.PENDING) {
+            const orderTime = new Date(med.orderedAt).getTime();
+            const diffMins = (now - orderTime) / 60000;
+            
+            allTasks.push({
+              id: med.id,
+              uniqueKey: `med-${med.id}`,
+              type: 'MEDICATION',
+              subType: med.route,
+              bed: bed,
+              patientName: bed.patient!.name,
+              triageCategory: bed.patient!.triageCategory,
+              description: med.name,
+              details: `${med.dose} ${med.route}`,
+              timestamp: med.orderedAt,
+              isOverdue: diffMins > 60, // Overdue if > 1 hour
+              isUrgent: bed.patient!.triageCategory <= 2,
+              doctorName: docName
+            });
+          }
+        });
+      }
+
+      // 2. Clinical Actions
+      if (bed.patient.actions) {
+        bed.patient.actions.forEach(action => {
+          if (!action.isCompleted) {
+            const reqTime = new Date(action.requestedAt).getTime();
+            const diffMins = (now - reqTime) / 60000;
+
+            allTasks.push({
+              id: action.id,
+              uniqueKey: `act-${action.id}`,
+              type: 'ACTION',
+              subType: action.type,
+              bed: bed,
+              patientName: bed.patient!.name,
+              triageCategory: bed.patient!.triageCategory,
+              description: action.name,
+              details: action.type,
+              timestamp: action.requestedAt,
+              isOverdue: diffMins > 90, // Overdue if > 1.5 hours
+              isUrgent: bed.patient!.triageCategory <= 2,
+              doctorName: docName
+            });
+          }
+        });
+      }
+    });
+
+    // Sort: Overdue first, then Urgent (Cat 1-2), then Oldest time
+    return allTasks.sort((a, b) => {
+        if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+        if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+  }, [beds, doctors]);
+
+  // Apply Filters
+  const filteredTasks = tasks.filter(task => {
+    // Section Filter
+    if (filterSection !== 'ALL' && task.bed.section !== filterSection) return false;
+    
+    // Doctor Filter
+    if (filterDoctor !== 'ALL' && task.bed.assignedDoctorId !== filterDoctor) return false;
+
+    // Type Filter
+    if (filterType === 'MEDS' && task.type !== 'MEDICATION') return false;
+    if (filterType === 'ACTIONS' && task.type !== 'ACTION') return false;
+
+    // Search
+    if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return (
+            task.patientName.toLowerCase().includes(q) ||
+            task.description.toLowerCase().includes(q) ||
+            task.bed.label.toLowerCase().includes(q)
+        );
+    }
+
+    return true;
+  });
+
+  const getActionIcon = (type: string) => {
+      switch (type) {
+          case 'LABS': return <Microscope size={16} className="text-blue-400"/>;
+          case 'XRAY': case 'CT': return <FileImage size={16} className="text-yellow-400"/>;
+          case 'EKG': return <HeartPulse size={16} className="text-red-400"/>;
+          case 'ULTRASOUND': return <Waves size={16} className="text-cyan-400"/>;
+          default: return <ClipboardList size={16} className="text-purple-400"/>;
+      }
+  };
+
+  const handleCompleteTask = (task: TaskItem) => {
+      // Add to completing state for animation
+      setCompletingIds(prev => [...prev, task.id]);
+
+      setTimeout(() => {
+          // Perform actual update
+          const updatedBed = { ...task.bed };
+          if (!updatedBed.patient) return;
+
+          if (task.type === 'MEDICATION') {
+              updatedBed.patient.medications = updatedBed.patient.medications?.map(m => 
+                  m.id === task.id ? { 
+                      ...m, 
+                      status: MedicationStatus.GIVEN, 
+                      administeredBy: currentUser.id, 
+                      administeredAt: new Date().toISOString() 
+                  } : m
+              );
+          } else {
+              updatedBed.patient.actions = updatedBed.patient.actions?.map(a => 
+                  a.id === task.id ? { 
+                      ...a, 
+                      isCompleted: true, 
+                      completedAt: new Date().toISOString() 
+                  } : a
+              );
+          }
+
+          onUpdateBed(updatedBed);
+          setCompletingIds(prev => prev.filter(id => id !== task.id));
+      }, 500); // Wait for animation
+  };
+
+  // Unique sections for filter
+  const sections = Array.from(new Set(beds.map(b => b.section))).sort();
+
+  return (
+    <div className="p-6 h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
+      
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0">
+        <div>
+            <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-3">
+               <div className="bg-slate-800 p-2 rounded-lg"><ClipboardList size={24} className="text-emerald-500" /></div>
+               Klinikinės Užduotys
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">Laukiantys vaistai ir tyrimai</p>
+        </div>
+        
+        <div className="flex gap-4">
+            <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl flex flex-col items-center">
+                <span className="text-xs text-slate-500 uppercase font-bold">Viso</span>
+                <span className="text-xl font-bold text-slate-200">{filteredTasks.length}</span>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl flex flex-col items-center">
+                <span className="text-xs text-slate-500 uppercase font-bold">Vėluoja</span>
+                <span className="text-xl font-bold text-red-500">{filteredTasks.filter(t => t.isOverdue).length}</span>
+            </div>
+        </div>
+      </div>
+
+      {/* Filters Bar */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 mb-4 shadow-sm shrink-0">
+         <div className="flex flex-col lg:flex-row gap-3 items-center">
+            
+            {/* Search */}
+            <div className="relative w-full lg:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                <input 
+                  type="text" 
+                  placeholder="Ieškoti..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 text-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+            </div>
+
+            <div className="h-8 w-px bg-slate-800 hidden lg:block"></div>
+
+            {/* Type Toggles */}
+            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 w-full lg:w-auto">
+                <button 
+                  onClick={() => setFilterType('ALL')}
+                  className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded transition ${filterType === 'ALL' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                    VISKAS
+                </button>
+                <button 
+                  onClick={() => setFilterType('MEDS')}
+                  className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded transition flex items-center justify-center gap-2 ${filterType === 'MEDS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                    <Pill size={12} /> VAISTAI
+                </button>
+                <button 
+                  onClick={() => setFilterType('ACTIONS')}
+                  className={`flex-1 lg:flex-none px-4 py-1.5 text-xs font-bold rounded transition flex items-center justify-center gap-2 ${filterType === 'ACTIONS' ? 'bg-yellow-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                    <Activity size={12} /> VEIKSMAI
+                </button>
+            </div>
+
+            <div className="h-8 w-px bg-slate-800 hidden lg:block"></div>
+
+            {/* Dropdowns */}
+            <select 
+                value={filterSection}
+                onChange={(e) => setFilterSection(e.target.value)}
+                className="w-full lg:w-48 bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="ALL">Visi postai</option>
+                {sections.map(sec => <option key={sec} value={sec}>{sec}</option>)}
+            </select>
+
+            <select 
+                value={filterDoctor}
+                onChange={(e) => setFilterDoctor(e.target.value)}
+                className="w-full lg:w-48 bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="ALL">Visi gydytojai</option>
+                {doctors.map(doc => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
+            </select>
+
+         </div>
+      </div>
+
+      {/* Task List Grid */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-10">
+         {filteredTasks.length === 0 ? (
+             <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                 <ClipboardList size={48} className="mb-4 opacity-20" />
+                 <p className="text-lg">Nėra užduočių</p>
+                 <p className="text-sm opacity-60">Viskas atlikta arba pakeiskite filtrus</p>
+             </div>
+         ) : (
+             <div className="space-y-3">
+                 {filteredTasks.map((task) => {
+                     const isCompleting = completingIds.includes(task.id);
+                     const isMed = task.type === 'MEDICATION';
+                     
+                     return (
+                         <div 
+                            key={task.uniqueKey}
+                            className={`
+                                relative bg-slate-900 border rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center gap-4 transition-all duration-500
+                                ${isCompleting ? 'opacity-0 transform translate-x-full' : 'opacity-100'}
+                                ${task.isOverdue ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800 hover:border-slate-700'}
+                            `}
+                         >
+                             {/* Time & Status */}
+                             <div className="flex flex-row md:flex-col items-center gap-2 md:w-24 shrink-0">
+                                 <div className={`text-sm font-mono font-bold ${task.isOverdue ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>
+                                     {new Date(task.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                                 </div>
+                                 {task.isOverdue && (
+                                     <div className="flex items-center gap-1 text-[10px] bg-red-900/20 text-red-400 px-1.5 py-0.5 rounded border border-red-900/30 uppercase font-bold">
+                                         <Clock size={10} /> Vėluoja
+                                     </div>
+                                 )}
+                             </div>
+
+                             {/* Location & Patient */}
+                             <div className="flex items-center gap-4 md:w-64 shrink-0">
+                                 <div className="flex flex-col items-center justify-center bg-slate-800 w-12 h-12 rounded-lg border border-slate-700 shrink-0">
+                                     <span className="text-xs text-slate-500 uppercase">Lova</span>
+                                     <span className="text-lg font-bold text-slate-200">{task.bed.label}</span>
+                                 </div>
+                                 <div>
+                                     <div className="flex items-center gap-2">
+                                         <span className="font-bold text-slate-200">{task.patientName}</span>
+                                         <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${TRIAGE_COLORS[task.triageCategory]}`}>
+                                             {task.triageCategory}
+                                         </span>
+                                     </div>
+                                     <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                         <Stethoscope size={10} /> {task.doctorName || 'Gydytojas'}
+                                     </div>
+                                 </div>
+                             </div>
+
+                             {/* Task Details */}
+                             <div className="flex-1 flex items-center gap-3 w-full">
+                                 <div className={`p-2.5 rounded-full shrink-0 ${isMed ? 'bg-blue-900/20 text-blue-400' : 'bg-yellow-900/20 text-yellow-400'}`}>
+                                     {isMed ? <Syringe size={20} /> : getActionIcon(task.details)}
+                                 </div>
+                                 <div>
+                                     <div className="text-lg font-medium text-slate-200">{task.description}</div>
+                                     <div className="text-sm text-slate-500 uppercase tracking-wide font-medium">{task.details}</div>
+                                 </div>
+                             </div>
+
+                             {/* Action Button */}
+                             <div className="md:w-32 shrink-0 flex justify-end w-full">
+                                 <button
+                                    onClick={() => handleCompleteTask(task)}
+                                    disabled={isCompleting}
+                                    className={`
+                                        flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm shadow-lg transition-all w-full
+                                        ${isMed 
+                                            ? 'bg-green-600 hover:bg-green-700 text-white shadow-green-900/20' 
+                                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/20'}
+                                    `}
+                                 >
+                                     {isCompleting ? (
+                                         <CheckCircle size={18} className="animate-ping" />
+                                     ) : (
+                                         <>
+                                            {isMed ? 'SULEISTI' : 'ATLIKTA'}
+                                            <ArrowRight size={16} />
+                                         </>
+                                     )}
+                                 </button>
+                             </div>
+
+                         </div>
+                     );
+                 })}
+             </div>
+         )}
+      </div>
+    </div>
+  );
+};
+
+export default TasksView;

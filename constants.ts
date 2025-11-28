@@ -2,6 +2,7 @@
 import { Bed, PatientStatus, TriageCategory, Staff, MedicationItem } from './types';
 
 export const PHYSICAL_SECTIONS = [
+  'Triažas',
   '1 Postas',
   '2 Postas',
   '3 Postas',
@@ -26,6 +27,7 @@ export const NURSES: Staff[] = [
   { id: 'n5', name: 'Kristina A.', role: 'Nurse', assignedSection: '5 Postas' },
   { id: 'n6', name: 'Amb. Slaug. 1', role: 'Nurse', assignedSection: 'Ambulatorija' },
   { id: 'n7', name: 'Amb. Slaug. 2', role: 'Nurse', assignedSection: 'Ambulatorija' },
+  { id: 'n_triage_default', name: 'Triažo Slaug.', role: 'Nurse', assignedSection: 'Triažas' },
 ];
 
 // Initial Medication Bank (Used if no custom data saved)
@@ -200,6 +202,8 @@ export const INITIAL_BEDS: Bed[] = [
     patient: { id: 'p4', name: 'Laima Stankevičienė', symptoms: 'Dehidratacija', triageCategory: TriageCategory.URGENT, arrivalTime: '10:15' },
     comment: 'Laša Ringeris'
   },
+  // Rezervinės 1 Postas
+  { id: 'bed-r1', label: 'R1', section: '1 Postas', status: PatientStatus.EMPTY },
 
   // Section 2: 2 Postas (was Deimantė)
   { 
@@ -227,6 +231,8 @@ export const INITIAL_BEDS: Bed[] = [
     patient: { id: 'p9', name: 'Saulius Lukšys', symptoms: 'Apsinuodijimas', triageCategory: TriageCategory.URGENT, arrivalTime: '11:20' },
     comment: 'Pykina'
   },
+  // Rezervinės 2 Postas
+  { id: 'bed-r2', label: 'R2', section: '2 Postas', status: PatientStatus.EMPTY },
 
   // Section 3: 3 Postas (was Kristina M.)
   { id: 'bed-7', label: '7', section: '3 Postas', status: PatientStatus.EMPTY },
@@ -246,6 +252,8 @@ export const INITIAL_BEDS: Bed[] = [
   { id: 'bed-9', label: '9', section: '3 Postas', status: PatientStatus.EMPTY },
   { id: 'bed-p9', label: 'P9', section: '3 Postas', status: PatientStatus.EMPTY },
   { id: 'bed-s9', label: 'S9', section: '3 Postas', status: PatientStatus.EMPTY },
+  // Rezervinės 3 Postas
+  { id: 'bed-r3', label: 'R3', section: '3 Postas', status: PatientStatus.EMPTY },
 
   // Section 4: 4 Postas (was Armanda)
   { id: 'bed-10', label: '10', section: '4 Postas', status: PatientStatus.EMPTY },
@@ -265,6 +273,8 @@ export const INITIAL_BEDS: Bed[] = [
   { id: 'bed-12', label: '12', section: '4 Postas', status: PatientStatus.EMPTY },
   { id: 'bed-p12', label: 'P12', section: '4 Postas', status: PatientStatus.EMPTY },
   { id: 'bed-s12', label: 'S12', section: '4 Postas', status: PatientStatus.EMPTY },
+  // Rezervinės 4 Postas
+  { id: 'bed-r4', label: 'R4', section: '4 Postas', status: PatientStatus.EMPTY },
 
   // Section 5: 5 Postas (was Kristina A.)
   { id: 'bed-13', label: '13', section: '5 Postas', status: PatientStatus.EMPTY },
@@ -279,6 +289,8 @@ export const INITIAL_BEDS: Bed[] = [
   { id: 'bed-121a', label: '121A', section: '5 Postas', status: PatientStatus.EMPTY },
   { id: 'bed-121b', label: '121B', section: '5 Postas', status: PatientStatus.EMPTY },
   { id: 'bed-izo', label: 'IZO', section: '5 Postas', status: PatientStatus.EMPTY },
+  // Rezervinės 5 Postas
+  { id: 'bed-r5', label: 'R5', section: '5 Postas', status: PatientStatus.EMPTY },
 
   // Section 6: Ambulatorija (was Ambulatorinis (2 slaug.))
   { id: 'bed-a1', label: 'A1', section: 'Ambulatorija', status: PatientStatus.EMPTY },

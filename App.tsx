@@ -1,15 +1,19 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2, Briefcase } from 'lucide-react';
+import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2, Briefcase, UserPlus, FileBarChart, LayoutDashboard, ClipboardList } from 'lucide-react';
 import BedTableView from './components/BedTableView';
 import BedMapView from './components/BedMapView';
 import EditPatientModal from './components/EditPatientModal';
 import SettingsView from './components/SettingsView';
 import PatientLogView from './components/PatientLogView';
-import ShiftManagerView from './components/ShiftManagerView'; // NEW
+import ShiftManagerView from './components/ShiftManagerView';
 import LoginView from './components/LoginView';
+import TriageModal from './components/TriageModal';
+import ReportsView from './components/ReportsView';
+import AdminDashboardView from './components/AdminDashboardView';
+import TasksView from './components/TasksView'; // NEW IMPORT
 import { DataService } from './services/DataService';
-import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem, AssignmentLog, WorkShift } from './types';
+import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem, AssignmentLog, WorkShift, RegistrationLog, Patient } from './types';
 import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS, PHYSICAL_SECTIONS } from './constants';
 
 const App: React.FC = () => {
@@ -19,7 +23,8 @@ const App: React.FC = () => {
   const [beds, setBeds] = useState<Bed[]>(INITIAL_BEDS);
   const [patientLog, setPatientLog] = useState<PatientLogEntry[]>([]);
   const [assignmentLogs, setAssignmentLogs] = useState<AssignmentLog[]>([]);
-  const [workShifts, setWorkShifts] = useState<WorkShift[]>([]); // NEW
+  const [registrationLogs, setRegistrationLogs] = useState<RegistrationLog[]>([]); 
+  const [workShifts, setWorkShifts] = useState<WorkShift[]>([]);
   
   const [autoRefresh, setAutoRefresh] = useState(() => {
     const saved = localStorage.getItem('er_auto_refresh');
@@ -31,11 +36,14 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'log' | 'shift'>('table');
+  // Updated viewMode type
+  const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'log' | 'shift' | 'reports' | 'admin_dashboard' | 'tasks'>('table');
   const [activeTab, setActiveTab] = useState<'general' | 'ambulatory'>('general');
   
   const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTriageModalOpen, setIsTriageModalOpen] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<PatientStatus | 'ALL'>('ALL');
   const [filterNurse, setFilterNurse] = useState<string>('ALL');
@@ -75,7 +83,6 @@ const App: React.FC = () => {
     const loadData = async () => {
       let loadedBeds = await DataService.fetchBeds();
       
-      // Perform migration if needed
       const migratedBeds = migrateBedSections(loadedBeds);
       if (JSON.stringify(migratedBeds) !== JSON.stringify(loadedBeds)) {
           loadedBeds = migratedBeds;
@@ -84,11 +91,24 @@ const App: React.FC = () => {
       setBeds(loadedBeds);
 
       const loadedDoctors = await DataService.fetchStaff('doctors');
-      const sanitizedDocs = loadedDoctors.map(d => ({ ...d, isActive: d.isActive !== undefined ? d.isActive : true }));
+      const sanitizedDocs: Staff[] = loadedDoctors.map(d => ({ ...d, isActive: d.isActive !== undefined ? d.isActive : true }));
       setDoctors(sanitizedDocs);
 
-      const loadedNurses = await DataService.fetchStaff('nurses');
-      const sanitizedNurses = loadedNurses.map(n => ({ ...n, isActive: n.isActive !== undefined ? n.isActive : true }));
+      let loadedNurses = await DataService.fetchStaff('nurses');
+      let sanitizedNurses: Staff[] = loadedNurses.map(n => ({ ...n, isActive: n.isActive !== undefined ? n.isActive : true }));
+      
+      if (!sanitizedNurses.some(n => n.assignedSection === 'Triažas')) {
+          const triageNurse: Staff = { 
+              id: 'n_triage_auto', 
+              name: 'Triažo Slaug.', 
+              role: 'Nurse', 
+              assignedSection: 'Triažas', 
+              isActive: true 
+          };
+          sanitizedNurses = [...sanitizedNurses, triageNurse];
+          DataService.saveStaff('nurses', sanitizedNurses); 
+      }
+
       setNurses(sanitizedNurses);
 
       const loadedMeds = await DataService.fetchMedications();
@@ -102,6 +122,9 @@ const App: React.FC = () => {
 
       const savedShifts = localStorage.getItem('er_work_shifts');
       if (savedShifts) setWorkShifts(JSON.parse(savedShifts));
+      
+      const savedRegLogs = localStorage.getItem('er_registration_logs');
+      if (savedRegLogs) setRegistrationLogs(JSON.parse(savedRegLogs));
     };
     loadData();
   }, []);
@@ -117,14 +140,13 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('er_work_shifts', JSON.stringify(workShifts));
     
-    // Auto-update doctor availability based on shifts
     const checkShifts = () => {
         const now = new Date().getTime();
         let updated = false;
         
-        const newDoctors = doctors.map(doc => {
+        const newDoctors: Staff[] = doctors.map(doc => {
             const shift = workShifts.find(s => s.doctorId === doc.id);
-            if (!shift) return doc; // No shift assigned, keep manual state (or default true)
+            if (!shift) return doc; 
             
             const start = new Date(shift.start).getTime();
             const end = new Date(shift.end).getTime();
@@ -144,7 +166,7 @@ const App: React.FC = () => {
     };
 
     checkShifts();
-    const interval = setInterval(checkShifts, 60000); // Check every minute
+    const interval = setInterval(checkShifts, 60000); 
     return () => clearInterval(interval);
   }, [workShifts, doctors]);
 
@@ -263,11 +285,54 @@ const App: React.FC = () => {
     return `${h}h ${m}m`;
   };
 
+  // Triage Registration Logic
+  const handleTriageRegistration = async (data: { name: string; symptoms: string; triageCategory: TriageCategory; bedId: string; assignedDoctorId?: string }) => {
+    const bedIndex = beds.findIndex(b => b.id === data.bedId);
+    if (bedIndex === -1 || !currentUser) return;
+
+    const now = new Date();
+    const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+
+    const newPatient: Patient = {
+        id: `pat-${Date.now()}`,
+        name: data.name,
+        symptoms: data.symptoms,
+        triageCategory: data.triageCategory,
+        arrivalTime: timeString,
+        registeredBy: currentUser.id,
+        medications: [],
+        actions: [],
+        vitals: { lastUpdated: now.toISOString() }
+    };
+
+    const updatedBed: Bed = {
+        ...beds[bedIndex],
+        status: PatientStatus.WAITING_EXAM,
+        patient: newPatient,
+        assignedDoctorId: data.assignedDoctorId 
+    };
+
+    const newRegLog: RegistrationLog = {
+        id: `reg-${Date.now()}`,
+        nurseId: currentUser.id,
+        patientName: data.name,
+        triageCategory: data.triageCategory,
+        timestamp: now.toISOString()
+    };
+    
+    const updatedRegLogs = [...registrationLogs, newRegLog];
+    setRegistrationLogs(updatedRegLogs);
+    localStorage.setItem('er_registration_logs', JSON.stringify(updatedRegLogs));
+
+    await handleSaveBed(updatedBed);
+    setIsTriageModalOpen(false);
+    addNotification('SUCCESS', `Pacientas ${data.name} sėkmingai užregistruotas (Lova ${updatedBed.label})`, updatedBed.id);
+  };
+
   const handleSaveBed = async (updatedBed: Bed) => {
     let newLogs = [...patientLog];
     const oldBed = beds.find(b => b.id === updatedBed.id);
 
-    // Notifications Logic
     if (updatedBed.patient && updatedBed.patient.triageCategory === TriageCategory.IMMEDIATE) {
        if (!oldBed?.patient || oldBed.patient.triageCategory !== TriageCategory.IMMEDIATE) {
           addNotification('ALERT', `SKUBU: Naujas 1 kat. pacientas Lovoje ${updatedBed.label}`, updatedBed.id);
@@ -285,10 +350,7 @@ const App: React.FC = () => {
        addNotification('INFO', `Naujas paskyrimas lovoje ${updatedBed.label}: ${latestMed.name}`, updatedBed.id);
     }
 
-    // --- ASSIGNMENT LOGGING (Workload History) ---
-    // Log if a doctor is newly assigned to a valid patient
     if (updatedBed.patient && updatedBed.assignedDoctorId && updatedBed.status !== PatientStatus.EMPTY) {
-        // If doctor changed OR if new patient admitted (check patient ID change)
         const isNewAssignment = 
             (oldBed?.assignedDoctorId !== updatedBed.assignedDoctorId) || 
             (oldBed?.patient?.id !== updatedBed.patient.id);
@@ -307,11 +369,9 @@ const App: React.FC = () => {
         }
     }
 
-    // Update Beds State
     const newBeds = beds.map(b => b.id === updatedBed.id ? updatedBed : b);
     setBeds(newBeds);
     
-    // Archive Logic (Discharge)
     if (oldBed?.patient && (!updatedBed.patient || updatedBed.status === PatientStatus.EMPTY)) {
       const docName = doctors.find(d => d.id === oldBed.assignedDoctorId)?.name;
       
@@ -352,7 +412,6 @@ const App: React.FC = () => {
   const handleQuickDischarge = async (bed: Bed) => {
     if (!bed.patient) return;
     
-    // Confirmation handled in BedTableView now
     const updatedBed: Bed = {
       ...bed,
       patient: undefined,
@@ -372,6 +431,7 @@ const App: React.FC = () => {
     setPatientLog([]);
     setAssignmentLogs([]);
     setWorkShifts([]);
+    setRegistrationLogs([]); 
     setNotifications([]);
     setAutoRefresh(true);
     localStorage.clear();
@@ -426,11 +486,15 @@ const App: React.FC = () => {
   const handleLogin = (user: UserProfile) => {
     setCurrentUser(user);
     localStorage.setItem('er_current_user', JSON.stringify(user));
+    if (user.role === 'Admin') {
+        setViewMode('admin_dashboard');
+    }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('er_current_user');
+    setViewMode('table'); 
   };
 
   const dismissNotification = (id: string) => {
@@ -442,7 +506,7 @@ const App: React.FC = () => {
   };
 
   const filteredBeds = beds.filter(bed => {
-    if (!bed) return false; // Guard against null beds
+    if (!bed) return false;
     
     const isAmbulatory = bed.section === 'Ambulatorija';
     if (activeTab === 'general' && isAmbulatory) return false;
@@ -450,14 +514,11 @@ const App: React.FC = () => {
 
     if (filterStatus !== 'ALL' && bed.status !== filterStatus) return false;
     
-    // Nurse Filter logic updated to check assignedSection
     if (filterNurse !== 'ALL') {
         const selectedNurse = nurses.find(n => n.name === filterNurse);
         if (selectedNurse && selectedNurse.assignedSection) {
              if (bed.section !== selectedNurse.assignedSection) return false;
         } else {
-             // If nurse has no section, maybe show nothing or just ignore?
-             // Let's hide beds if nurse is not assigned to any section
              return false;
         }
     }
@@ -476,13 +537,15 @@ const App: React.FC = () => {
 
   const totalBedsCount = beds.length;
   const occupiedBedsCount = beds.filter(b => b && b.status !== PatientStatus.EMPTY).length;
-  const emptyBedsCount = totalBedsCount - occupiedBedsCount;
   const criticalPatients = beds.filter(b => b && b.patient && b.patient.triageCategory <= 2).length;
   const waitingPatients = beds.filter(b => b && b.status === PatientStatus.WAITING_EXAM).length;
   const unreadCount = notifications.length;
 
   const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorija' && b.status !== PatientStatus.EMPTY).length;
   const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorija' && b.status !== PatientStatus.EMPTY).length;
+
+  const isTriageMode = currentUser && currentUser.assignedSection === 'Triažas';
+  const isAdmin = currentUser && currentUser.role === 'Admin';
 
   if (!currentUser) {
     return <LoginView doctors={doctors} nurses={nurses} onLogin={handleLogin} />;
@@ -499,6 +562,16 @@ const App: React.FC = () => {
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          {isAdmin && (
+            <button 
+                onClick={() => setViewMode('admin_dashboard')}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'admin_dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
+            >
+                <LayoutDashboard size={20} />
+                <span className="hidden lg:block font-medium">Dashboard</span>
+            </button>
+          )}
+
           <button 
             onClick={() => setViewMode('table')}
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
@@ -512,6 +585,15 @@ const App: React.FC = () => {
           >
             <LayoutGrid size={20} />
             <span className="hidden lg:block font-medium">Žemėlapis</span>
+          </button>
+
+          {/* New Tasks Button */}
+          <button 
+            onClick={() => setViewMode('tasks')}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'tasks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
+          >
+            <ClipboardList size={20} />
+            <span className="hidden lg:block font-medium">Užduotys</span>
           </button>
 
            <button 
@@ -528,6 +610,14 @@ const App: React.FC = () => {
           >
             <Briefcase size={20} />
             <span className="hidden lg:block font-medium">Pamainos valdymas</span>
+          </button>
+
+          <button 
+            onClick={() => setViewMode('reports')}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
+          >
+            <FileBarChart size={20} />
+            <span className="hidden lg:block font-medium">Ataskaitos</span>
           </button>
           
           <div className="my-4 border-t border-slate-800"></div>
@@ -553,7 +643,6 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Detailed Breakdown */}
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/50 mt-2">
                       <div className="bg-slate-900/50 p-2 rounded">
                           <div className="text-[10px] text-slate-500 uppercase font-semibold">Salė</div>
@@ -564,11 +653,6 @@ const App: React.FC = () => {
                           <div className="text-lg font-bold text-amber-500">{ambulatoryOccupied}</div>
                       </div>
                   </div>
-
-                  <div className="pt-2 border-t border-slate-800/50 flex justify-between text-[10px] text-slate-500 uppercase tracking-wide">
-                      <span>Iš viso lovų</span>
-                      <span className="font-mono">{totalBedsCount}</span>
-                   </div>
                </div>
                
                <div className="space-y-2">
@@ -604,59 +688,79 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-950">
         <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 shadow-sm z-20">
+           
            <div className="flex items-center gap-4 w-full max-w-5xl">
-             <div className="relative w-full max-w-xs lg:max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Ieškoti paciento, lovos, gydytojo..." 
-                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-sm placeholder:text-slate-500"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-             </div>
              
-             <div className="relative w-40 lg:w-48 hidden sm:block">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <select 
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value as PatientStatus | 'ALL')}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
-                >
-                  <option value="ALL">Visi statusai</option>
-                  {Object.values(PatientStatus).map(status => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
-             </div>
+             {isTriageMode ? (
+                <div className="flex-1 flex items-center gap-4 animate-in fade-in slide-in-from-left-4">
+                    <button 
+                        onClick={() => setIsTriageModalOpen(true)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-900/40 flex items-center gap-2 transform hover:scale-105 transition"
+                    >
+                        <UserPlus size={20} />
+                        NAUJAS PACIENTAS (TRIAŽAS)
+                    </button>
+                    <div className="h-8 w-px bg-slate-800 mx-2"></div>
+                    <div className="bg-slate-800 px-3 py-1 rounded text-slate-300 text-sm font-medium border border-blue-500/30">
+                        Jūsų postas: <span className="text-blue-400 font-bold">Triažas</span>
+                    </div>
+                </div>
+             ) : (
+                <>
+                    <div className="relative w-full max-w-xs lg:max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <input 
+                        type="text" 
+                        placeholder="Ieškoti paciento, lovos, gydytojo..." 
+                        className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-sm placeholder:text-slate-500"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                    
+                    <div className="relative w-40 lg:w-48 hidden sm:block">
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <select 
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value as PatientStatus | 'ALL')}
+                        className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
+                        >
+                        <option value="ALL">Visi statusai</option>
+                        {Object.values(PatientStatus).map(status => (
+                            <option key={status} value={status}>{status}</option>
+                        ))}
+                        </select>
+                    </div>
 
-             <div className="relative w-40 lg:w-48 hidden md:block">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <select 
-                  value={filterNurse}
-                  onChange={(e) => setFilterNurse(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
-                >
-                  <option value="ALL">Visi postai</option>
-                  {nurses.map(nurse => (
-                    <option key={nurse.id} value={nurse.name}>{nurse.name}</option>
-                  ))}
-                </select>
-             </div>
+                    <div className="relative w-40 lg:w-48 hidden md:block">
+                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <select 
+                        value={filterNurse}
+                        onChange={(e) => setFilterNurse(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
+                        >
+                        <option value="ALL">Visi postai</option>
+                        {nurses.map(nurse => (
+                            <option key={nurse.id} value={nurse.name}>{nurse.name}</option>
+                        ))}
+                        </select>
+                    </div>
 
-             <div className="relative w-40 lg:w-48 hidden lg:block">
-                <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <select 
-                  value={filterDoctor}
-                  onChange={(e) => setFilterDoctor(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
-                >
-                  <option value="ALL">Visi gydytojai</option>
-                  {doctors.map(doc => (
-                    <option key={doc.id} value={doc.id}>{doc.name}</option>
-                  ))}
-                </select>
-             </div>
+                    <div className="relative w-40 lg:w-48 hidden lg:block">
+                        <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <select 
+                        value={filterDoctor}
+                        onChange={(e) => setFilterDoctor(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
+                        >
+                        <option value="ALL">Visi gydytojai</option>
+                        {doctors.map(doc => (
+                            <option key={doc.id} value={doc.id}>{doc.name}</option>
+                        ))}
+                        </select>
+                    </div>
+                </>
+             )}
            </div>
 
            <div className="flex items-center gap-4">
@@ -730,8 +834,19 @@ const App: React.FC = () => {
                     <div className="p-3 border-b border-slate-800">
                       <p className="font-semibold text-slate-200">{currentUser.name}</p>
                       <p className="text-xs text-slate-500 capitalize">{currentUser.role === 'Assistant' ? 'Administrator' : currentUser.role}</p>
+                      {currentUser.assignedSection && (
+                        <p className="text-[10px] text-blue-400 mt-0.5">Postas: {currentUser.assignedSection}</p>
+                      )}
                     </div>
                     <div className="p-1">
+                      {isAdmin && (
+                        <button 
+                            onClick={() => { setViewMode('admin_dashboard'); setIsUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition"
+                        >
+                            <LayoutDashboard size={14} /> Dashboard
+                        </button>
+                      )}
                       <button 
                         onClick={() => { setViewMode('settings'); setIsUserMenuOpen(false); }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition"
@@ -751,23 +866,25 @@ const App: React.FC = () => {
            </div>
         </header>
         
-        {/* Tab Navigation */}
-        <div className="flex items-center px-6 pt-2 gap-1 border-b border-slate-800 bg-slate-950 shrink-0">
-           <button
-             onClick={() => setActiveTab('general')}
-             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'general' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
-           >
-              Salė
-              {generalOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{generalOccupied}</span>}
-           </button>
-           <button
-             onClick={() => setActiveTab('ambulatory')}
-             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'ambulatory' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
-           >
-              Ambulatorija
-              {ambulatoryOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{ambulatoryOccupied}</span>}
-           </button>
-        </div>
+        {/* Tab Navigation (Only visible in Table/Map view) */}
+        {(viewMode === 'table' || viewMode === 'map') && (
+          <div className="flex items-center px-6 pt-2 gap-1 border-b border-slate-800 bg-slate-950 shrink-0">
+             <button
+               onClick={() => setActiveTab('general')}
+               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'general' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+             >
+                Salė
+                {generalOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{generalOccupied}</span>}
+             </button>
+             <button
+               onClick={() => setActiveTab('ambulatory')}
+               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'ambulatory' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+             >
+                Ambulatorija
+                {ambulatoryOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{ambulatoryOccupied}</span>}
+             </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-hidden relative">
           {viewMode === 'table' ? (
@@ -775,7 +892,7 @@ const App: React.FC = () => {
                <BedTableView 
                 beds={filteredBeds} 
                 doctors={doctors}
-                nurses={nurses} // Pass nurses
+                nurses={nurses} 
                 onRowClick={handleBedClick}
                 onDischarge={handleQuickDischarge}
                 onStatusChange={handleQuickStatusChange}
@@ -786,9 +903,18 @@ const App: React.FC = () => {
                <BedMapView 
                  beds={filteredBeds} 
                  doctors={doctors} 
-                 nurses={nurses} // Pass nurses
+                 nurses={nurses} 
                  onBedClick={handleBedClick} 
                  onMovePatient={handleMovePatient}
+               />
+            </div>
+          ) : viewMode === 'tasks' ? ( // Tasks View
+            <div className="absolute inset-0 overflow-hidden">
+               <TasksView 
+                 beds={beds}
+                 doctors={doctors}
+                 currentUser={currentUser}
+                 onUpdateBed={handleSaveBed}
                />
             </div>
           ) : viewMode === 'log' ? (
@@ -810,6 +936,25 @@ const App: React.FC = () => {
                 assignmentLogs={assignmentLogs}
                 workShifts={workShifts}
                 setWorkShifts={setWorkShifts}
+                registrationLogs={registrationLogs} 
+              />
+            </div>
+          ) : viewMode === 'reports' ? ( 
+            <div className="absolute inset-0 overflow-hidden">
+              <ReportsView 
+                registrationLogs={registrationLogs}
+                nurses={nurses}
+              />
+            </div>
+          ) : viewMode === 'admin_dashboard' ? ( 
+            <div className="absolute inset-0 overflow-hidden">
+              <AdminDashboardView 
+                beds={beds}
+                doctors={doctors}
+                nurses={nurses}
+                patientLogs={patientLog}
+                registrationLogs={registrationLogs}
+                onNavigate={(view) => setViewMode(view)}
               />
             </div>
           ) : (
@@ -831,6 +976,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
+      {/* MODALS */}
       {isModalOpen && selectedBed && (
         <EditPatientModal
           bed={selectedBed}
@@ -842,6 +988,18 @@ const App: React.FC = () => {
           onClose={() => { setIsModalOpen(false); setSelectedBed(null); }}
           onSave={handleSaveBed}
           workShifts={workShifts}
+        />
+      )}
+
+      {/* TRIAGE MODAL */}
+      {isTriageModalOpen && (
+        <TriageModal
+          isOpen={isTriageModalOpen}
+          onClose={() => setIsTriageModalOpen(false)}
+          beds={beds}
+          doctors={doctors}
+          workShifts={workShifts}
+          onSubmit={handleTriageRegistration}
         />
       )}
     </div>

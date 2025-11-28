@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { Staff, Bed, PatientLogEntry, AssignmentLog, WorkShift, PatientStatus } from '../types';
-import { Users, BarChart2, CheckCircle, Clock, AlertTriangle, Moon, Sun, Briefcase, Plus, X, CalendarClock, Trash2, Edit2, Check, UserPlus, MoreHorizontal, MapPin } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Staff, Bed, PatientLogEntry, AssignmentLog, WorkShift, PatientStatus, RegistrationLog } from '../types';
+import { Users, BarChart2, CheckCircle, Clock, AlertTriangle, Moon, Sun, Briefcase, Plus, X, CalendarClock, Trash2, Edit2, Check, UserPlus, MoreHorizontal, MapPin, ClipboardList, ChevronDown } from 'lucide-react';
 import { PHYSICAL_SECTIONS } from '../constants';
 
 interface ShiftManagerViewProps {
@@ -14,27 +14,35 @@ interface ShiftManagerViewProps {
   assignmentLogs: AssignmentLog[];
   workShifts: WorkShift[];
   setWorkShifts: (shifts: WorkShift[]) => void;
+  registrationLogs?: RegistrationLog[]; // Optional for compatibility
 }
 
 const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({ 
   doctors, setDoctors, 
   nurses, setNurses,
   beds, patientLogs, assignmentLogs,
-  workShifts, setWorkShifts
+  workShifts, setWorkShifts,
+  registrationLogs = []
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Staff Management State
-  const [newDoctorName, setNewDoctorName] = useState('');
-  const [newNurseName, setNewNurseName] = useState('');
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [selectedNurseId, setSelectedNurseId] = useState('');
+  
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  // Deleting in this view just means setting isActive = false (hiding from shift)
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // Filter staff from the bank who are NOT active AND NOT disabled
+  const availableDoctors = useMemo(() => doctors.filter(d => !d.isActive && !d.isDisabled), [doctors]);
+  const availableNurses = useMemo(() => nurses.filter(n => !n.isActive && !n.isDisabled), [nurses]);
 
   // Define the timeline window: 08:00 today to 08:00 tomorrow
   const getTimelineRange = () => {
@@ -120,6 +128,22 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
     return { activeCount, heavyCount, dischargedCount };
   };
 
+  const getNurseStats = (nurseId: string) => {
+    const regCount = registrationLogs.filter(l => 
+        l.nurseId === nurseId && 
+        new Date(l.timestamp) >= timelineStart && 
+        new Date(l.timestamp) <= timelineEnd
+    ).length;
+    return regCount;
+  };
+  
+  const getTotalTriageCount = () => {
+    return registrationLogs.filter(l => 
+        new Date(l.timestamp) >= timelineStart && 
+        new Date(l.timestamp) <= timelineEnd
+    ).length;
+  };
+
   const toggleNurseActive = (nurseId: string) => {
       setNurses(nurses.map(n => n.id === nurseId ? { ...n, isActive: !n.isActive } : n));
   };
@@ -128,62 +152,24 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
       setNurses(nurses.map(n => n.id === nurseId ? { ...n, assignedSection: section } : n));
   };
 
-  const handleAddDoctor = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDoctorName.trim()) return;
-    
-    const newDoc: Staff = {
-      id: `d-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: newDoctorName.trim(),
-      role: 'Doctor'
-    };
-    
-    setDoctors([...doctors, newDoc]);
-    setNewDoctorName('');
+  const handleAddDoctorToShift = () => {
+    if (!selectedDoctorId) return;
+    setDoctors(doctors.map(d => d.id === selectedDoctorId ? { ...d, isActive: true } : d));
+    setSelectedDoctorId('');
   };
 
-  const handleAddNurse = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNurseName.trim()) return;
-    
-    const newNurse: Staff = {
-      id: `n-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: newNurseName.trim(),
-      role: 'Nurse',
-      isActive: true,
-      assignedSection: '1 Postas' // Default
-    };
-    
-    setNurses([...nurses, newNurse]);
-    setNewNurseName('');
+  const handleAddNurseToShift = () => {
+    if (!selectedNurseId) return;
+    setNurses(nurses.map(n => n.id === selectedNurseId ? { ...n, isActive: true } : n));
+    setSelectedNurseId('');
   };
 
-  const startEditing = (item: Staff) => {
-    setDeletingId(null);
-    setEditingId(item.id);
-    setEditName(item.name);
-  };
-
-  const saveEdit = (id: string, type: 'Doctor' | 'Nurse') => {
-    if (!editName.trim()) return;
+  // "Deleting" here just means removing from current shift view (isActive = false)
+  const removeStaffFromShift = (id: string, type: 'Doctor' | 'Nurse') => {
     if (type === 'Doctor') {
-        setDoctors(doctors.map(d => d.id === id ? { ...d, name: editName.trim() } : d));
+        setDoctors(doctors.map(d => d.id === id ? { ...d, isActive: false } : d));
     } else {
-        setNurses(nurses.map(n => n.id === id ? { ...n, name: editName.trim() } : n));
-    }
-    setEditingId(null);
-  };
-
-  const initDelete = (id: string) => {
-    setEditingId(null);
-    setDeletingId(id);
-  };
-
-  const executeDelete = (id: string, type: 'Doctor' | 'Nurse') => {
-    if (type === 'Doctor') {
-        setDoctors(doctors.filter(d => d.id !== id));
-    } else {
-        setNurses(nurses.filter(n => n.id !== id));
+        setNurses(nurses.map(n => n.id === id ? { ...n, isActive: false } : n));
     }
     setDeletingId(null);
   };
@@ -226,84 +212,83 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
         {/* LEFT COLUMN: Nurses */}
         <div className="lg:col-span-1 space-y-4">
            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
-              <div className="p-4 bg-slate-950/50 border-b border-slate-800">
+              <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
                  <h3 className="font-bold text-slate-200 text-sm uppercase tracking-wide">Slaugytojos & Postai</h3>
+                 <div className="text-[10px] bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-900/50 font-bold flex items-center gap-1" title="Viso triažo registracijų šią pamainą">
+                    <ClipboardList size={10} />
+                    Reg: {getTotalTriageCount()}
+                 </div>
               </div>
               
               <div className="p-3 border-b border-slate-800/50 bg-slate-900/50">
                   <div className="flex gap-2">
-                      <input 
-                        type="text"
-                        value={newNurseName}
-                        onChange={(e) => setNewNurseName(e.target.value)}
-                        placeholder="Vardas"
+                      <select 
+                        value={selectedNurseId}
+                        onChange={(e) => setSelectedNurseId(e.target.value)}
                         className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-1.5 text-xs outline-none focus:border-emerald-500"
-                      />
+                      >
+                        <option value="">Pasirinkti iš banko...</option>
+                        {availableNurses.map(n => (
+                            <option key={n.id} value={n.id}>{n.name} {n.assignedSection ? `(${n.assignedSection})` : ''}</option>
+                        ))}
+                      </select>
                       <button 
-                        onClick={handleAddNurse}
-                        disabled={!newNurseName.trim()}
+                        onClick={handleAddNurseToShift}
+                        disabled={!selectedNurseId}
                         className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50"
                       >
                         <Plus size={16} />
                       </button>
                   </div>
+                  <p className="text-[10px] text-slate-500 mt-1 italic">
+                    Nerandate sąraše? Pridėkite per "Nustatymai -> Personalo Bankas".
+                  </p>
               </div>
 
               <div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
-                 {nurses.map(nurse => (
-                    <div key={nurse.id} className={`p-2 rounded-lg border transition-all ${nurse.isActive ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'}`}>
-                        {editingId === nurse.id ? (
-                            <div className="flex gap-2 mb-2">
-                                <input 
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="flex-1 bg-slate-950 border border-emerald-500 rounded px-2 py-1 text-xs outline-none"
-                                    autoFocus
-                                />
-                                <button onClick={() => saveEdit(nurse.id, 'Nurse')} className="text-emerald-500 p-1 hover:bg-slate-700 rounded"><Check size={14}/></button>
-                                <button onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={14}/></button>
-                            </div>
-                        ) : deletingId === nurse.id ? (
-                             <div className="flex items-center justify-between mb-2">
-                                <span className="text-red-400 text-xs font-bold">Ištrinti?</span>
-                                <div className="flex gap-2">
-                                    <button onClick={() => executeDelete(nurse.id, 'Nurse')} className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded">TAIP</button>
-                                    <button onClick={() => setDeletingId(null)} className="px-2 py-0.5 bg-slate-700 text-slate-300 text-[10px] rounded">NE</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="flex items-center gap-2 cursor-pointer flex-1">
-                                    <input type="checkbox" className="sr-only" checked={!!nurse.isActive} onChange={() => toggleNurseActive(nurse.id)} />
-                                    <span className={`w-2 h-2 rounded-full ${nurse.isActive ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
-                                    <span className={`text-sm font-medium ${nurse.isActive ? 'text-slate-200' : 'text-slate-500'}`}>{nurse.name}</span>
-                                </label>
-                                <div className="flex gap-1">
-                                    <button onClick={() => startEditing(nurse)} className="text-slate-500 hover:text-blue-400 p-1 hover:bg-slate-700/50 rounded"><Edit2 size={12}/></button>
-                                    <button onClick={() => initDelete(nurse.id)} className="text-slate-500 hover:text-red-400 p-1 hover:bg-slate-700/50 rounded"><Trash2 size={12}/></button>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {/* Section Selector */}
+                 {nurses.map(nurse => {
+                    const regCount = getNurseStats(nurse.id);
+                    const isTriage = nurse.assignedSection === 'Triažas';
+                    return (
+                    <div key={nurse.id} className={`p-2 rounded-lg border transition-all ${nurse.isActive ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700 opacity-60 hidden'}`}>
                         {nurse.isActive && (
-                           <div className="flex items-center gap-2 ml-4">
-                              <MapPin size={12} className="text-slate-500" />
-                              <select 
-                                value={nurse.assignedSection || ''} 
-                                onChange={(e) => handleNurseSectionChange(nurse.id, e.target.value)}
-                                className="flex-1 bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1 outline-none"
-                              >
-                                 <option value="" disabled>-- Priskirti postą --</option>
-                                 {PHYSICAL_SECTIONS.map(sec => (
-                                     <option key={sec} value={sec}>{sec}</option>
-                                 ))}
-                              </select>
-                           </div>
+                            <>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                        <span className={`w-2 h-2 rounded-full ${nurse.isActive ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
+                                        <span className={`text-sm font-medium ${nurse.isActive ? 'text-slate-200' : 'text-slate-500'}`}>
+                                            {nurse.name}
+                                            {(isTriage || regCount > 0) && (
+                                                <span className={`ml-2 text-[10px] px-1 rounded border font-mono ${isTriage ? 'bg-blue-900/30 text-blue-300 border-blue-900/50' : 'bg-slate-700/50 text-slate-400 border-slate-600'}`}>
+                                                    Reg: {regCount}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => removeStaffFromShift(nurse.id, 'Nurse')} className="text-slate-500 hover:text-red-400 p-1 hover:bg-slate-700/50 rounded" title="Pašalinti iš pamainos (neištrina iš banko)"><X size={14}/></button>
+                                    </div>
+                                </div>
+                                
+                                {/* Section Selector */}
+                                <div className="flex items-center gap-2 ml-4">
+                                    <MapPin size={12} className="text-slate-500" />
+                                    <select 
+                                        value={nurse.assignedSection || ''} 
+                                        onChange={(e) => handleNurseSectionChange(nurse.id, e.target.value)}
+                                        className="flex-1 bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1 outline-none"
+                                    >
+                                        <option value="" disabled>-- Priskirti postą --</option>
+                                        {PHYSICAL_SECTIONS.map(sec => (
+                                            <option key={sec} value={sec}>{sec}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </>
                         )}
                     </div>
-                 ))}
-                 {nurses.length === 0 && <p className="text-center text-xs text-slate-500 italic py-4">Nėra slaugytojų.</p>}
+                 )})}
+                 {nurses.filter(n => n.isActive).length === 0 && <p className="text-center text-xs text-slate-500 italic py-4">Šioje pamainoje nėra priskirtų slaugytojų.</p>}
               </div>
            </div>
         </div>
@@ -325,16 +310,19 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
               <div className="p-4 overflow-x-auto">
                  <div className="flex items-center gap-2 mb-4 bg-slate-800/30 p-2 rounded border border-slate-800 max-w-md">
                       <span className="text-xs font-bold text-slate-500 uppercase px-2"><UserPlus size={16}/></span>
-                      <input 
-                        type="text"
-                        value={newDoctorName}
-                        onChange={(e) => setNewDoctorName(e.target.value)}
-                        placeholder="Naujas gydytojas..."
-                        className="flex-1 bg-transparent border-none text-slate-200 text-sm outline-none placeholder:text-slate-600"
-                      />
+                      <select 
+                        value={selectedDoctorId}
+                        onChange={(e) => setSelectedDoctorId(e.target.value)}
+                        className="flex-1 bg-transparent border-none text-slate-200 text-sm outline-none"
+                      >
+                        <option value="" className="bg-slate-900">Pasirinkti gydytoją iš banko...</option>
+                        {availableDoctors.map(d => (
+                            <option key={d.id} value={d.id} className="bg-slate-900">{d.name}</option>
+                        ))}
+                      </select>
                       <button 
-                        onClick={handleAddDoctor}
-                        disabled={!newDoctorName.trim()}
+                        onClick={handleAddDoctorToShift}
+                        disabled={!selectedDoctorId}
                         className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold disabled:opacity-50"
                       >
                         PRIDĖTI
@@ -351,7 +339,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                  </div>
 
                  <div className="space-y-4 min-w-[600px]">
-                    {doctors.filter(d => d.role === 'Doctor').map(doc => {
+                    {doctors.filter(d => d.role === 'Doctor' && d.isActive).map(doc => {
                         const shift = workShifts.find(s => s.doctorId === doc.id);
                         const stats = getDoctorStats(doc.id);
                         const shiftStartPos = shift ? getPosition(shift.start) : 0;
@@ -363,44 +351,20 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                             <div key={doc.id} className="group relative bg-slate-800/30 rounded-lg p-3 border border-slate-800 hover:bg-slate-800 transition">
                                 <div className="flex flex-col md:flex-row justify-between items-start mb-2 gap-4">
                                     <div className="flex items-center gap-3 flex-1">
-                                        {editingId === doc.id ? (
-                                            <div className="flex items-center gap-2">
-                                                <input 
-                                                    value={editName}
-                                                    onChange={(e) => setEditName(e.target.value)}
-                                                    className="w-40 bg-slate-950 border border-blue-500 rounded px-2 py-1 text-xs outline-none"
-                                                    autoFocus
-                                                />
-                                                <button onClick={() => saveEdit(doc.id, 'Doctor')} className="text-green-500 p-1 hover:bg-slate-700 rounded"><Check size={14}/></button>
-                                                <button onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={14}/></button>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-blue-600 text-white shadow-lg shadow-blue-900/50`}>
+                                            {doc.name.substring(0, 2).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div className="font-medium text-slate-200 flex items-center gap-2 group-hover:gap-1">
+                                                {doc.name}
+                                                <button onClick={() => removeStaffFromShift(doc.id, 'Doctor')} className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition" title="Pašalinti iš pamainos"><X size={12}/></button>
                                             </div>
-                                        ) : deletingId === doc.id ? (
-                                             <div className="flex items-center gap-2">
-                                                <span className="text-red-400 text-xs font-bold">Ištrinti?</span>
-                                                <button onClick={() => executeDelete(doc.id, 'Doctor')} className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded">TAIP</button>
-                                                <button onClick={() => setDeletingId(null)} className="px-2 py-0.5 bg-slate-700 text-slate-300 text-[10px] rounded">NE</button>
+                                            <div className="flex gap-2 text-[10px] text-slate-500">
+                                                <span>Aktyvūs: <strong className="text-blue-400">{stats.activeCount}</strong></span>
+                                                <span>Sunkūs: <strong className="text-red-400">{stats.heavyCount}</strong></span>
+                                                <span>Išrašė: <strong className="text-green-400">{stats.dischargedCount}</strong></span>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${doc.isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-slate-700 text-slate-400'}`}>
-                                                    {doc.name.substring(0, 2).toUpperCase()}
-                                                </div>
-                                                <div>
-                                                    <div className="font-medium text-slate-200 flex items-center gap-2 group-hover:gap-1">
-                                                        {doc.name}
-                                                        <div className="opacity-0 group-hover:opacity-100 flex transition-opacity ml-2">
-                                                            <button onClick={() => startEditing(doc)} className="text-slate-500 hover:text-blue-400 p-1"><Edit2 size={10}/></button>
-                                                            <button onClick={() => initDelete(doc.id)} className="text-slate-500 hover:text-red-400 p-1"><Trash2 size={10}/></button>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-2 text-[10px] text-slate-500">
-                                                        <span>Aktyvūs: <strong className="text-blue-400">{stats.activeCount}</strong></span>
-                                                        <span>Sunkūs: <strong className="text-red-400">{stats.heavyCount}</strong></span>
-                                                        <span>Išrašė: <strong className="text-green-400">{stats.dischargedCount}</strong></span>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-3 xl:grid-cols-6 gap-1 opacity-20 group-hover:opacity-100 transition justify-end w-full max-w-xl">
@@ -461,6 +425,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                             </div>
                         );
                     })}
+                    {doctors.filter(d => d.isActive).length === 0 && <p className="text-center text-xs text-slate-500 italic py-4">Šioje pamainoje nėra priskirtų gydytojų.</p>}
                  </div>
               </div>
             </div>

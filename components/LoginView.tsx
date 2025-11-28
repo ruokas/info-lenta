@@ -223,7 +223,9 @@ const LoginView: React.FC<LoginViewProps> = ({ doctors, nurses, onLogin }) => {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-8">
-                   {(activeRole === 'Doctor' ? doctors : nurses).map((staff, idx) => (
+                   {(activeRole === 'Doctor' ? doctors : nurses).map((staff, idx) => {
+                     const isTriage = staff.assignedSection === 'Triažas';
+                     return (
                      <button
                        key={staff.id}
                        onClick={() => handleStaffLogin(staff)}
@@ -232,26 +234,35 @@ const LoginView: React.FC<LoginViewProps> = ({ doctors, nurses, onLogin }) => {
                          group relative p-6 rounded-2xl border text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] animate-in fade-in zoom-in fill-mode-backwards
                          ${activeRole === 'Doctor' 
                             ? 'bg-slate-800/60 border-slate-700/50 hover:bg-blue-900/30 hover:border-blue-500/50 shadow-sm hover:shadow-blue-900/20' 
-                            : 'bg-slate-800/60 border-slate-700/50 hover:bg-emerald-900/30 hover:border-emerald-500/50 shadow-sm hover:shadow-emerald-900/20'}
+                            : isTriage 
+                                ? 'bg-indigo-900/30 border-indigo-500/50 hover:bg-indigo-900/50 hover:border-indigo-400 shadow-md shadow-indigo-900/20'
+                                : 'bg-slate-800/60 border-slate-700/50 hover:bg-emerald-900/30 hover:border-emerald-500/50 shadow-sm hover:shadow-emerald-900/20'}
                        `}
                      >
                         <div className="flex items-start justify-between mb-4">
                            <div className={`
-                             w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shadow-lg ring-2 ring-opacity-20 ring-white
-                             ${activeRole === 'Doctor' ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white' : 'bg-gradient-to-br from-emerald-500 to-emerald-700 text-white'}
+                             w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shadow-lg ring-2 ring-opacity-20 ring-white relative
+                             ${activeRole === 'Doctor' 
+                                ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white' 
+                                : isTriage 
+                                    ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white'
+                                    : 'bg-gradient-to-br from-emerald-500 to-emerald-700 text-white'}
                            `}>
                               {staff.name.substring(0, 2).toUpperCase()}
                            </div>
                            <ChevronRight className={`opacity-0 group-hover:opacity-100 transition-opacity transform group-hover:translate-x-1 ${activeRole === 'Doctor' ? 'text-blue-400' : 'text-emerald-400'}`} />
                         </div>
                         <div>
-                           <p className="font-bold text-slate-100 text-lg leading-tight mb-1">{staff.name}</p>
+                           <div className="flex items-center gap-2">
+                             <p className="font-bold text-slate-100 text-lg leading-tight mb-1">{staff.name}</p>
+                             {isTriage && <span className="text-[10px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded shadow-sm shadow-indigo-500/50 animate-pulse">TRIAŽAS</span>}
+                           </div>
                            <p className="text-xs uppercase font-medium text-slate-500 tracking-wider group-hover:text-slate-300 transition-colors">
                              {activeRole === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}
                            </p>
                         </div>
                      </button>
-                   ))}
+                   )})}
                 </div>
               )}
            </div>

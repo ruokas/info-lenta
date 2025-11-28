@@ -56,7 +56,7 @@ const DRUG_SYNONYMS: Record<string, string[]> = {
   'Bisoprololum': ['Biso'],
 };
 
-const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors, currentUser, medicationBank, isOpen, onClose, onSave, workShifts }) => {
+const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors, currentUser, medicationBank = [], isOpen, onClose, onSave, workShifts }) => {
   const [formData, setFormData] = useState<Bed>(bed);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
@@ -88,7 +88,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
   // Priority list for Quick Picks
   const quickPickMeds = useMemo(() => {
-    if (!medicationBank) return [];
+    if (!medicationBank || !Array.isArray(medicationBank)) return [];
     
     // Expanded list covering Pain, Fever, Emergency, Nausea, etc.
     const COMMON_PRIORITY = [
@@ -108,6 +108,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
     // Filter active meds that match common priority names
     const priorityMeds = medicationBank.filter(m => 
+        m && m.name && // Check for valid object and name
         m.isActive !== false && 
         COMMON_PRIORITY.some(p => m.name.includes(p))
     );
@@ -118,7 +119,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
         // Push found items to front based on priority index
         const iA = idxA === -1 ? Infinity : idxA;
         const iB = idxB === -1 ? Infinity : idxB;
-        if (iA === iB) return a.name.localeCompare(b.name);
+        if (iA === iB) return (a.name || '').localeCompare(b.name || '');
         return iA - iB;
     });
 
@@ -128,11 +129,11 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
   // Filtered Suggestions with Synonym Support
   const filteredSuggestions = useMemo(() => {
-    if (!newMedName) return [];
+    if (!newMedName || !medicationBank || !Array.isArray(medicationBank)) return [];
     const q = newMedName.toLowerCase();
     
     return medicationBank.filter(med => {
-        if (med.isActive === false) return false;
+        if (!med || !med.name || med.isActive === false) return false;
         
         // 1. Direct Name Match
         if (med.name.toLowerCase().includes(q)) return true;
@@ -155,6 +156,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
   // Helper to get the synonym that matched the search query for display
   const getMatchedSynonym = (medName: string, query: string): string | null => {
+    if (!medName) return null;
     const q = query.toLowerCase();
     if (medName.toLowerCase().includes(q)) return null; // Matched by name, no need to show synonym
     
@@ -182,9 +184,11 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     setShowSuggestions(false);
     setSuggestedDoctor(null);
     
-    // Set default action time to now
+    // Set default action time to now safely (HH:MM)
     const now = new Date();
-    setNewActionTime(now.toLocaleTimeString('lt-LT', { hour: '2-digit', minute: '2-digit' }));
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    setNewActionTime(`${hh}:${mm}`);
   }, [bed]);
 
   // Check for unsaved changes
@@ -856,7 +860,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
                 {/* --- TAB: ACTIONS (WORKFLOW) --- */}
                 {activeTab === 'actions' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
+                  <div className="space-y-6">
                     <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
                        <h3 className="text-sm font-semibold text-slate-300 mb-3">Paskirti tyrimą ar konsultaciją</h3>
                        <div className="flex gap-2 mb-3 flex-wrap">
@@ -932,7 +936,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
                 {/* --- TAB: MEDICATIONS --- */}
                 {activeTab === 'meds' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
+                  <div className="space-y-6">
                     
                      {formData.patient.allergies && (
                         <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-lg flex items-center gap-3 text-red-200 mb-4">
