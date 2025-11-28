@@ -83,6 +83,7 @@ export interface Staff {
   role: 'Doctor' | 'Nurse' | 'Assistant' | 'Admin';
   isActive?: boolean; // Controlled by the system based on WorkShift
   currentShiftId?: string; // Link to active shift
+  assignedSection?: string; // NEW: Physical section assignment (e.g. '1 Postas')
 }
 
 export interface UserProfile extends Staff {

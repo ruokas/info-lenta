@@ -1,20 +1,22 @@
+
 import React, { useState } from 'react';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { STATUS_COLORS, TRIAGE_COLORS } from '../constants';
-import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X, ChevronDown } from 'lucide-react';
+import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X, ChevronDown, User } from 'lucide-react';
 
 interface BedTableViewProps {
   beds: Bed[];
   doctors: Staff[];
+  nurses: Staff[]; // NEW
   onRowClick: (bed: Bed) => void;
   onDischarge: (bed: Bed) => void;
   onStatusChange: (bed: Bed, newStatus: PatientStatus) => void;
 }
 
-const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, onDischarge, onStatusChange }) => {
+const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRowClick, onDischarge, onStatusChange }) => {
   const [confirmDischargeId, setConfirmDischargeId] = useState<string | null>(null);
 
-  // Group beds by section (Nurse Name)
+  // Group beds by section (Section Name)
   const groupedBeds = React.useMemo(() => {
     const groups: Record<string, Bed[]> = {};
     beds.forEach(bed => {
@@ -28,6 +30,10 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, 
   }, [beds]);
 
   const getDoctorName = (id?: string) => doctors.find(d => d.id === id)?.name || '';
+  
+  const getAssignedNurses = (sectionName: string) => {
+     return nurses.filter(n => n.assignedSection === sectionName && n.isActive).map(n => n.name).join(', ');
+  };
 
   const getStatusIcon = (status: PatientStatus) => {
     switch (status) {
@@ -98,7 +104,7 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, 
       <table className="w-full text-sm border-collapse">
         <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-semibold tracking-wider sticky top-0 z-10 shadow-sm">
           <tr>
-            <th className="px-3 py-3 text-left border-r border-slate-800 w-32">Slaugytoja</th>
+            <th className="px-3 py-3 text-left border-r border-slate-800 w-40">Postas / Slaug.</th>
             <th className="px-2 py-3 text-center border-r border-slate-800 w-16">Lova</th>
             <th className="px-3 py-3 text-left border-r border-slate-800 w-32">Gydytojas</th>
             <th className="px-2 py-3 text-center border-r border-slate-800 w-12">Kat.</th>
@@ -113,8 +119,10 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, 
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
-          {(Object.entries(groupedBeds) as [string, Bed[]][]).map(([nurseName, sectionBeds], groupIndex) => (
-            <React.Fragment key={nurseName}>
+          {(Object.entries(groupedBeds) as [string, Bed[]][]).map(([sectionName, sectionBeds], groupIndex) => {
+            const assignedNurses = getAssignedNurses(sectionName);
+            return (
+            <React.Fragment key={sectionName}>
               {sectionBeds.map((bed, index) => {
                 const isFirst = index === 0;
                 const rowSpan = sectionBeds.length;
@@ -136,13 +144,19 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, 
                     key={bed.id} 
                     className="hover:bg-slate-800/50 transition-colors group"
                   >
-                    {/* Nurse Column */}
+                    {/* Nurse/Section Column */}
                     {isFirst && (
                       <td 
                         rowSpan={rowSpan} 
-                        className="px-3 py-4 text-left font-bold text-slate-300 border-r border-slate-800 bg-slate-900 align-middle"
+                        className="px-3 py-4 text-left border-r border-slate-800 bg-slate-900 align-middle"
                       >
-                         <div className="sticky top-12">{nurseName}</div>
+                         <div className="sticky top-12">
+                             <div className="font-bold text-slate-200">{sectionName}</div>
+                             <div className="text-xs text-slate-500 mt-1 flex items-start gap-1">
+                                <User size={10} className="mt-0.5 shrink-0" />
+                                {assignedNurses || <span className="italic opacity-50">Nepriskirta</span>}
+                             </div>
+                         </div>
                       </td>
                     )}
                     
@@ -270,7 +284,8 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, 
                 <td colSpan={12}></td>
               </tr>
             </React.Fragment>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

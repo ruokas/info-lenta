@@ -10,7 +10,7 @@ import ShiftManagerView from './components/ShiftManagerView'; // NEW
 import LoginView from './components/LoginView';
 import { DataService } from './services/DataService';
 import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem, AssignmentLog, WorkShift } from './types';
-import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS } from './constants';
+import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS, PHYSICAL_SECTIONS } from './constants';
 
 const App: React.FC = () => {
   const [doctors, setDoctors] = useState<Staff[]>(DOCTORS);
@@ -48,9 +48,39 @@ const App: React.FC = () => {
   const notifRef = useRef<HTMLDivElement>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
+  // Migration helper
+  const migrateBedSections = (beds: Bed[]) => {
+    const map: Record<string, string> = {
+      'Aušra': '1 Postas',
+      'Deimantė': '2 Postas',
+      'Kristina M.': '3 Postas',
+      'Armanda': '4 Postas',
+      'Kristina A.': '5 Postas',
+      'Ambulatorinis (2 slaug.)': 'Ambulatorija'
+    };
+    
+    let changed = false;
+    const newBeds = beds.map(b => {
+      if (map[b.section]) {
+        changed = true;
+        return { ...b, section: map[b.section] };
+      }
+      return b;
+    });
+    
+    return changed ? newBeds : beds;
+  };
+
   useEffect(() => {
     const loadData = async () => {
-      const loadedBeds = await DataService.fetchBeds();
+      let loadedBeds = await DataService.fetchBeds();
+      
+      // Perform migration if needed
+      const migratedBeds = migrateBedSections(loadedBeds);
+      if (JSON.stringify(migratedBeds) !== JSON.stringify(loadedBeds)) {
+          loadedBeds = migratedBeds;
+          DataService.saveBeds(loadedBeds);
+      }
       setBeds(loadedBeds);
 
       const loadedDoctors = await DataService.fetchStaff('doctors');
@@ -414,12 +444,24 @@ const App: React.FC = () => {
   const filteredBeds = beds.filter(bed => {
     if (!bed) return false; // Guard against null beds
     
-    const isAmbulatory = bed.section === 'Ambulatorinis (2 slaug.)';
+    const isAmbulatory = bed.section === 'Ambulatorija';
     if (activeTab === 'general' && isAmbulatory) return false;
     if (activeTab === 'ambulatory' && !isAmbulatory) return false;
 
     if (filterStatus !== 'ALL' && bed.status !== filterStatus) return false;
-    if (filterNurse !== 'ALL' && bed.section !== filterNurse) return false;
+    
+    // Nurse Filter logic updated to check assignedSection
+    if (filterNurse !== 'ALL') {
+        const selectedNurse = nurses.find(n => n.name === filterNurse);
+        if (selectedNurse && selectedNurse.assignedSection) {
+             if (bed.section !== selectedNurse.assignedSection) return false;
+        } else {
+             // If nurse has no section, maybe show nothing or just ignore?
+             // Let's hide beds if nurse is not assigned to any section
+             return false;
+        }
+    }
+    
     if (filterDoctor !== 'ALL' && bed.assignedDoctorId !== filterDoctor) return false;
     if (!searchQuery) return true;
     const lowerQuery = searchQuery.toLowerCase();
@@ -439,8 +481,8 @@ const App: React.FC = () => {
   const waitingPatients = beds.filter(b => b && b.status === PatientStatus.WAITING_EXAM).length;
   const unreadCount = notifications.length;
 
-  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
-  const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
+  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorija' && b.status !== PatientStatus.EMPTY).length;
+  const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorija' && b.status !== PatientStatus.EMPTY).length;
 
   if (!currentUser) {
     return <LoginView doctors={doctors} nurses={nurses} onLogin={handleLogin} />;
@@ -733,6 +775,7 @@ const App: React.FC = () => {
                <BedTableView 
                 beds={filteredBeds} 
                 doctors={doctors}
+                nurses={nurses} // Pass nurses
                 onRowClick={handleBedClick}
                 onDischarge={handleQuickDischarge}
                 onStatusChange={handleQuickStatusChange}
@@ -743,6 +786,7 @@ const App: React.FC = () => {
                <BedMapView 
                  beds={filteredBeds} 
                  doctors={doctors} 
+                 nurses={nurses} // Pass nurses
                  onBedClick={handleBedClick} 
                  onMovePatient={handleMovePatient}
                />

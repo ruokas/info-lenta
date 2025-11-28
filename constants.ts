@@ -1,6 +1,15 @@
 
 import { Bed, PatientStatus, TriageCategory, Staff, MedicationItem } from './types';
 
+export const PHYSICAL_SECTIONS = [
+  '1 Postas',
+  '2 Postas',
+  '3 Postas',
+  '4 Postas',
+  '5 Postas',
+  'Ambulatorija'
+];
+
 // Staff Data
 export const DOCTORS: Staff[] = [
   { id: 'd1', name: 'Gyd. Nida', role: 'Doctor' },
@@ -10,13 +19,13 @@ export const DOCTORS: Staff[] = [
 ];
 
 export const NURSES: Staff[] = [
-  { id: 'n1', name: 'Aušra', role: 'Nurse' },
-  { id: 'n2', name: 'Deimantė', role: 'Nurse' },
-  { id: 'n3', name: 'Kristina M.', role: 'Nurse' },
-  { id: 'n4', name: 'Armanda', role: 'Nurse' },
-  { id: 'n5', name: 'Kristina A.', role: 'Nurse' },
-  { id: 'n6', name: 'Amb. Slaug. 1', role: 'Nurse' },
-  { id: 'n7', name: 'Amb. Slaug. 2', role: 'Nurse' },
+  { id: 'n1', name: 'Aušra', role: 'Nurse', assignedSection: '1 Postas' },
+  { id: 'n2', name: 'Deimantė', role: 'Nurse', assignedSection: '2 Postas' },
+  { id: 'n3', name: 'Kristina M.', role: 'Nurse', assignedSection: '3 Postas' },
+  { id: 'n4', name: 'Armanda', role: 'Nurse', assignedSection: '4 Postas' },
+  { id: 'n5', name: 'Kristina A.', role: 'Nurse', assignedSection: '5 Postas' },
+  { id: 'n6', name: 'Amb. Slaug. 1', role: 'Nurse', assignedSection: 'Ambulatorija' },
+  { id: 'n7', name: 'Amb. Slaug. 2', role: 'Nurse', assignedSection: 'Ambulatorija' },
 ];
 
 // Initial Medication Bank (Used if no custom data saved)
@@ -164,129 +173,129 @@ export const MEDICATION_PROTOCOLS = [
 
 // Initial Bed State with new Lithuanian Mock Data
 export const INITIAL_BEDS: Bed[] = [
-  // Section 1: Aušra
-  { id: 'bed-it1', label: 'IT1', section: 'Aušra', status: PatientStatus.EMPTY },
+  // Section 1: 1 Postas (was Aušra)
+  { id: 'bed-it1', label: 'IT1', section: '1 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-it2', label: 'IT2', section: 'Aušra', assignedDoctorId: 'd1', status: PatientStatus.OBSERVATION,
+    id: 'bed-it2', label: 'IT2', section: '1 Postas', assignedDoctorId: 'd1', status: PatientStatus.OBSERVATION,
     patient: { id: 'p1', name: 'Jonas Petrauskas', symptoms: 'Sunkus kvėpavimo nepakankamumas', triageCategory: TriageCategory.IMMEDIATE, arrivalTime: '08:15' },
     comment: 'Stebėti saturaciją'
   },
   { 
-    id: 'bed-1', label: '1', section: 'Aušra', assignedDoctorId: 'd1', status: PatientStatus.ADMITTING,
+    id: 'bed-1', label: '1', section: '1 Postas', assignedDoctorId: 'd1', status: PatientStatus.ADMITTING,
     patient: { id: 'p2', name: 'Ona Kazlauskienė', symptoms: 'Krūtinės angina', triageCategory: TriageCategory.EMERGENCY, arrivalTime: '09:30' },
     comment: 'EKG pakitimai'
   },
-  { id: 'bed-p1', label: 'P1', section: 'Aušra', status: PatientStatus.EMPTY },
+  { id: 'bed-p1', label: 'P1', section: '1 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-2', label: '2', section: 'Aušra', assignedDoctorId: 'd2', status: PatientStatus.WAITING_EXAM,
+    id: 'bed-2', label: '2', section: '1 Postas', assignedDoctorId: 'd2', status: PatientStatus.WAITING_EXAM,
     patient: { id: 'p3', name: 'Tomas Banys', symptoms: 'Pilvo skausmai', triageCategory: TriageCategory.URGENT, arrivalTime: '10:00' },
     comment: 'Ūmus pankreatitas?'
   },
   { 
-    id: 'bed-p2', label: 'P2', section: 'Aušra', status: PatientStatus.EMPTY
+    id: 'bed-p2', label: 'P2', section: '1 Postas', status: PatientStatus.EMPTY
   },
-  { id: 'bed-3', label: '3', section: 'Aušra', status: PatientStatus.EMPTY },
+  { id: 'bed-3', label: '3', section: '1 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-p3', label: 'P3', section: 'Aušra', assignedDoctorId: 'd2', status: PatientStatus.IV_DRIP,
+    id: 'bed-p3', label: 'P3', section: '1 Postas', assignedDoctorId: 'd2', status: PatientStatus.IV_DRIP,
     patient: { id: 'p4', name: 'Laima Stankevičienė', symptoms: 'Dehidratacija', triageCategory: TriageCategory.URGENT, arrivalTime: '10:15' },
     comment: 'Laša Ringeris'
   },
 
-  // Section 2: Deimantė
+  // Section 2: 2 Postas (was Deimantė)
   { 
-    id: 'bed-4', label: '4', section: 'Deimantė', assignedDoctorId: 'd2', status: PatientStatus.WAITING_EXAM,
+    id: 'bed-4', label: '4', section: '2 Postas', assignedDoctorId: 'd2', status: PatientStatus.WAITING_EXAM,
     patient: { id: 'p5', name: 'Petras Jankauskas', symptoms: 'Galvos svaigimas', triageCategory: TriageCategory.SEMI_URGENT, arrivalTime: '10:45' }
   },
   { 
-    id: 'bed-p4', label: 'P4', section: 'Deimantė', status: PatientStatus.EMPTY
+    id: 'bed-p4', label: 'P4', section: '2 Postas', status: PatientStatus.EMPTY
   },
   { 
-    id: 'bed-5', label: '5', section: 'Deimantė', assignedDoctorId: 'd3', status: PatientStatus.DISCHARGE,
+    id: 'bed-5', label: '5', section: '2 Postas', assignedDoctorId: 'd3', status: PatientStatus.DISCHARGE,
     patient: { id: 'p7', name: 'Darius Vaitkus', symptoms: 'Hipertenzinė krizė', triageCategory: TriageCategory.URGENT, arrivalTime: '08:00' },
     comment: 'Spaudimas nukrito, išleidžiamas'
   },
-  { id: 'bed-p5', label: 'P5', section: 'Deimantė', status: PatientStatus.EMPTY },
+  { id: 'bed-p5', label: 'P5', section: '2 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-s5', label: 'S5', section: 'Deimantė', assignedDoctorId: 'd3', status: PatientStatus.WAITING_TESTS,
+    id: 'bed-s5', label: 'S5', section: '2 Postas', assignedDoctorId: 'd3', status: PatientStatus.WAITING_TESTS,
     patient: { id: 'p8', name: 'Rasa Urbonienė', symptoms: 'Inksto kolika', triageCategory: TriageCategory.URGENT, arrivalTime: '11:10' },
     comment: 'Laukia echoskopijos'
   },
-  { id: 'bed-6', label: '6', section: 'Deimantė', status: PatientStatus.EMPTY },
-  { id: 'bed-p6', label: 'P6', section: 'Deimantė', status: PatientStatus.EMPTY },
+  { id: 'bed-6', label: '6', section: '2 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-p6', label: 'P6', section: '2 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-s6', label: 'S6', section: 'Deimantė', assignedDoctorId: 'd2', status: PatientStatus.IV_DRIP,
+    id: 'bed-s6', label: 'S6', section: '2 Postas', assignedDoctorId: 'd2', status: PatientStatus.IV_DRIP,
     patient: { id: 'p9', name: 'Saulius Lukšys', symptoms: 'Apsinuodijimas', triageCategory: TriageCategory.URGENT, arrivalTime: '11:20' },
     comment: 'Pykina'
   },
 
-  // Section 3: Kristina M.
-  { id: 'bed-7', label: '7', section: 'Kristina M.', status: PatientStatus.EMPTY },
-  { id: 'bed-p7', label: 'P7', section: 'Kristina M.', status: PatientStatus.EMPTY },
+  // Section 3: 3 Postas (was Kristina M.)
+  { id: 'bed-7', label: '7', section: '3 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-p7', label: 'P7', section: '3 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-s7', label: 'S7', section: 'Kristina M.', assignedDoctorId: 'd4', status: PatientStatus.IV_DRIP,
+    id: 'bed-s7', label: 'S7', section: '3 Postas', assignedDoctorId: 'd4', status: PatientStatus.IV_DRIP,
     patient: { id: 'p10', name: 'Elena Žukauskienė', symptoms: 'Bendras silpnumas', triageCategory: TriageCategory.SEMI_URGENT, arrivalTime: '11:35' },
     comment: 'Vyresnio amžiaus'
   },
   { 
-    id: 'bed-8', label: '8', section: 'Kristina M.', assignedDoctorId: 'd1', status: PatientStatus.WAITING_EXAM,
+    id: 'bed-8', label: '8', section: '3 Postas', assignedDoctorId: 'd1', status: PatientStatus.WAITING_EXAM,
     patient: { id: 'p11', name: 'Andrius Vasiliauskas', symptoms: 'Nugaros skausmas', triageCategory: TriageCategory.NON_URGENT, arrivalTime: '12:00' },
     comment: 'Lėtinis radikulitas'
   },
-  { id: 'bed-p8', label: 'P8', section: 'Kristina M.', status: PatientStatus.EMPTY },
-  { id: 'bed-s8', label: 'S8', section: 'Kristina M.', status: PatientStatus.EMPTY },
-  { id: 'bed-9', label: '9', section: 'Kristina M.', status: PatientStatus.EMPTY },
-  { id: 'bed-p9', label: 'P9', section: 'Kristina M.', status: PatientStatus.EMPTY },
-  { id: 'bed-s9', label: 'S9', section: 'Kristina M.', status: PatientStatus.EMPTY },
+  { id: 'bed-p8', label: 'P8', section: '3 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-s8', label: 'S8', section: '3 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-9', label: '9', section: '3 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-p9', label: 'P9', section: '3 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-s9', label: 'S9', section: '3 Postas', status: PatientStatus.EMPTY },
 
-  // Section 4: Armanda
-  { id: 'bed-10', label: '10', section: 'Armanda', status: PatientStatus.EMPTY },
+  // Section 4: 4 Postas (was Armanda)
+  { id: 'bed-10', label: '10', section: '4 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-p10', label: 'P10', section: 'Armanda', assignedDoctorId: 'd3', status: PatientStatus.WAITING_EXAM, 
+    id: 'bed-p10', label: 'P10', section: '4 Postas', assignedDoctorId: 'd3', status: PatientStatus.WAITING_EXAM, 
     patient: {id: 'p13', name: 'Viktoras Butkus', symptoms: 'Pritraukė koją', triageCategory: TriageCategory.URGENT, arrivalTime: '12:15'}, 
     comment: 'Traumatologas pakviestas' 
   },
-  { id: 'bed-s10', label: 'S10', section: 'Armanda', status: PatientStatus.EMPTY },
+  { id: 'bed-s10', label: 'S10', section: '4 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-11', label: '11', section: 'Armanda', assignedDoctorId: 'd1', status: PatientStatus.IV_DRIP, 
+    id: 'bed-11', label: '11', section: '4 Postas', assignedDoctorId: 'd1', status: PatientStatus.IV_DRIP, 
     patient: {id: 'p14', name: 'Inga Kavaliauskaitė', symptoms: 'Alerginė reakcija', triageCategory: TriageCategory.EMERGENCY, arrivalTime: '12:30'}, 
     comment: 'Bėrimas, tinimas' 
   },
-  { id: 'bed-p11', label: 'P11', section: 'Armanda', status: PatientStatus.EMPTY },
-  { id: 'bed-s11', label: 'S11', section: 'Armanda', status: PatientStatus.EMPTY },
-  { id: 'bed-12', label: '12', section: 'Armanda', status: PatientStatus.EMPTY },
-  { id: 'bed-p12', label: 'P12', section: 'Armanda', status: PatientStatus.EMPTY },
-  { id: 'bed-s12', label: 'S12', section: 'Armanda', status: PatientStatus.EMPTY },
+  { id: 'bed-p11', label: 'P11', section: '4 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-s11', label: 'S11', section: '4 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-12', label: '12', section: '4 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-p12', label: 'P12', section: '4 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-s12', label: 'S12', section: '4 Postas', status: PatientStatus.EMPTY },
 
-  // Section 5: Kristina A.
-  { id: 'bed-13', label: '13', section: 'Kristina A.', status: PatientStatus.EMPTY },
-  { id: 'bed-14', label: '14', section: 'Kristina A.', status: PatientStatus.EMPTY },
-  { id: 'bed-15', label: '15', section: 'Kristina A.', status: PatientStatus.EMPTY },
+  // Section 5: 5 Postas (was Kristina A.)
+  { id: 'bed-13', label: '13', section: '5 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-14', label: '14', section: '5 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-15', label: '15', section: '5 Postas', status: PatientStatus.EMPTY },
   { 
-    id: 'bed-16', label: '16', section: 'Kristina A.', assignedDoctorId: 'd1', status: PatientStatus.WAITING_TESTS, 
+    id: 'bed-16', label: '16', section: '5 Postas', assignedDoctorId: 'd1', status: PatientStatus.WAITING_TESTS, 
     patient: {id: 'p15', name: 'Mantas Navickas', symptoms: 'Dusulys', triageCategory: TriageCategory.URGENT, arrivalTime: '12:50'}, 
     comment: 'Astmos paūmėjimas' 
   },
-  { id: 'bed-17', label: '17', section: 'Kristina A.', status: PatientStatus.EMPTY },
-  { id: 'bed-121a', label: '121A', section: 'Kristina A.', status: PatientStatus.EMPTY },
-  { id: 'bed-121b', label: '121B', section: 'Kristina A.', status: PatientStatus.EMPTY },
-  { id: 'bed-izo', label: 'IZO', section: 'Kristina A.', status: PatientStatus.EMPTY },
+  { id: 'bed-17', label: '17', section: '5 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-121a', label: '121A', section: '5 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-121b', label: '121B', section: '5 Postas', status: PatientStatus.EMPTY },
+  { id: 'bed-izo', label: 'IZO', section: '5 Postas', status: PatientStatus.EMPTY },
 
-  // Section 6: Ambulatorinis (Shared 2 Nurses)
-  { id: 'bed-a1', label: 'A1', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a2', label: 'A2', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a3', label: 'A3', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a4', label: 'A4', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a5', label: 'A5', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a6', label: 'A6', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a7', label: 'A7', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a8', label: 'A8', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a9', label: 'A9', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a10', label: 'A10', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a11', label: 'A11', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a12', label: 'A12', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a13', label: 'A13', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a14', label: 'A14', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
-  { id: 'bed-a15', label: 'A15', section: 'Ambulatorinis (2 slaug.)', status: PatientStatus.EMPTY },
+  // Section 6: Ambulatorija (was Ambulatorinis (2 slaug.))
+  { id: 'bed-a1', label: 'A1', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a2', label: 'A2', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a3', label: 'A3', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a4', label: 'A4', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a5', label: 'A5', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a6', label: 'A6', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a7', label: 'A7', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a8', label: 'A8', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a9', label: 'A9', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a10', label: 'A10', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a11', label: 'A11', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a12', label: 'A12', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a13', label: 'A13', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a14', label: 'A14', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+  { id: 'bed-a15', label: 'A15', section: 'Ambulatorija', status: PatientStatus.EMPTY },
 ];
 
 export const STATUS_COLORS: Record<PatientStatus, string> = {

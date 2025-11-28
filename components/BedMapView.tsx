@@ -7,17 +7,26 @@ import { User, Stethoscope, AlertTriangle, Pill, Microscope, FileImage, Clipboar
 interface BedMapViewProps {
   beds: Bed[];
   doctors: Staff[];
+  nurses: Staff[]; // NEW
   onBedClick: (bed: Bed) => void;
   onMovePatient?: (fromBedId: string, toBedId: string) => void;
 }
 
-const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMovePatient }) => {
+const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedClick, onMovePatient }) => {
   const [dragOverBedId, setDragOverBedId] = useState<string | null>(null);
   const [animatingBeds, setAnimatingBeds] = useState<string[]>([]);
 
   const getDoctorInitials = (id?: string) => {
       const name = doctors.find(d => d.id === id)?.name;
       return name ? name.substring(0, 3).toUpperCase() : null;
+  };
+
+  const getAssignedNurses = (sectionName: string) => {
+    // Get first nurse or format a short string if multiple
+    const activeNurses = nurses.filter(n => n.assignedSection === sectionName && n.isActive);
+    if (activeNurses.length === 0) return null;
+    if (activeNurses.length === 1) return activeNurses[0].name;
+    return `${activeNurses[0].name} +${activeNurses.length - 1}`;
   };
 
   const isOverdue = (arrivalTime?: string) => {
@@ -98,6 +107,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
           const medColor = getMedicationStatusColor(bed);
           const pendingActions = getPendingActions(bed);
           const vitals = bed.patient?.vitals;
+          const nurseName = getAssignedNurses(bed.section);
           
           return (
             <div 
@@ -134,9 +144,12 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
               )}
 
               {/* Header: Label & Section */}
-              <div className={`flex justify-between items-center p-2 rounded-t-lg ${isEmpty ? 'bg-slate-800/50' : isAmb ? 'bg-amber-900/30 text-amber-200' : 'bg-slate-700 text-slate-100'}`}>
-                <span className="font-bold text-lg">{bed.label}</span>
-                <span className="text-[10px] uppercase opacity-70 tracking-wider text-slate-400 truncate max-w-[80px]">{bed.section}</span>
+              <div className={`flex justify-between items-start p-2 rounded-t-lg ${isEmpty ? 'bg-slate-800/50' : isAmb ? 'bg-amber-900/30 text-amber-200' : 'bg-slate-700 text-slate-100'}`}>
+                <span className="font-bold text-lg leading-none">{bed.label}</span>
+                <div className="flex flex-col items-end max-w-[70%]">
+                   <span className="text-[10px] uppercase opacity-70 tracking-wider text-slate-400 truncate w-full text-right">{bed.section}</span>
+                   {nurseName && <span className="text-[9px] text-blue-300 truncate w-full text-right">({nurseName})</span>}
+                </div>
               </div>
 
               {/* Body: Patient Info */}
@@ -199,7 +212,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
               {/* Empty State Footer */}
               {isEmpty && (
                  <div className="p-2 text-center text-xs text-slate-600 font-medium">
-                    {isAmb ? 'Laisva' : 'Laisva'}
+                    Laisva
                  </div>
               )}
 

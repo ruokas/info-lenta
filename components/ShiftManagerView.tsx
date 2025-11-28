@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Staff, Bed, PatientLogEntry, AssignmentLog, WorkShift, PatientStatus } from '../types';
-import { Users, BarChart2, CheckCircle, Clock, AlertTriangle, Moon, Sun, Briefcase, Plus, X, CalendarClock, Trash2, Edit2, Check, UserPlus, MoreHorizontal } from 'lucide-react';
+import { Users, BarChart2, CheckCircle, Clock, AlertTriangle, Moon, Sun, Briefcase, Plus, X, CalendarClock, Trash2, Edit2, Check, UserPlus, MoreHorizontal, MapPin } from 'lucide-react';
+import { PHYSICAL_SECTIONS } from '../constants';
 
 interface ShiftManagerViewProps {
   doctors: Staff[];
@@ -53,24 +54,20 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   // Helper to add shifts with custom hours
   const addShift = (doctorId: string, startHour: number, endHour: number) => {
     const start = new Date(timelineStart);
-    // Adjust start date if the requested start hour is earlier than the timeline start (8 AM)
-    // Actually, we usually want to set it relative to the timeline base date.
-    // If timeline starts at 08:00, and we request 09:00, it's same day.
-    // If we request 08:00, it's same day.
     start.setHours(startHour, 0, 0, 0);
 
     const end = new Date(start);
     
     if (endHour < startHour) {
-        // Crosses midnight (e.g. 20:00 to 08:00)
+        // Crosses midnight
         end.setDate(end.getDate() + 1);
         end.setHours(endHour, 0, 0, 0);
     } else if (endHour === startHour) {
-        // 24 hours (e.g. 08:00 to 08:00)
+        // 24 hours
         end.setDate(end.getDate() + 1);
         end.setHours(endHour, 0, 0, 0);
     } else {
-        // Same day (e.g. 08:00 to 20:00)
+        // Same day
         end.setHours(endHour, 0, 0, 0);
     }
 
@@ -84,7 +81,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
         type
     };
 
-    // Remove existing shifts for this doctor in this period to prevent overlap
     const filtered = workShifts.filter(s => s.doctorId !== doctorId);
     setWorkShifts([...filtered, newShift]);
   };
@@ -106,7 +102,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
      }));
   };
 
-  // Calculate position on timeline (0-100%)
   const getPosition = (isoTime: string) => {
       const t = new Date(isoTime).getTime();
       const start = timelineStart.getTime();
@@ -118,7 +113,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
 
   const currentTimePos = getPosition(currentTime.toISOString());
 
-  // Stats Logic
   const getDoctorStats = (docId: string) => {
     const activeCount = beds.filter(b => b.assignedDoctorId === docId && b.status !== PatientStatus.EMPTY).length;
     const heavyCount = beds.filter(b => b.assignedDoctorId === docId && b.patient && b.patient.triageCategory <= 2).length;
@@ -129,8 +123,10 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   const toggleNurseActive = (nurseId: string) => {
       setNurses(nurses.map(n => n.id === nurseId ? { ...n, isActive: !n.isActive } : n));
   };
-
-  // --- CRUD Logic (Moved from Settings) ---
+  
+  const handleNurseSectionChange = (nurseId: string, section: string) => {
+      setNurses(nurses.map(n => n.id === nurseId ? { ...n, assignedSection: section } : n));
+  };
 
   const handleAddDoctor = (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,7 +149,9 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
     const newNurse: Staff = {
       id: `n-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: newNurseName.trim(),
-      role: 'Nurse'
+      role: 'Nurse',
+      isActive: true,
+      assignedSection: '1 Postas' // Default
     };
     
     setNurses([...nurses, newNurse]);
@@ -190,20 +188,18 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
     setDeletingId(null);
   };
 
-  // Shift Buttons Configuration
   const SHIFT_BUTTONS = [
     { label: '08-20', start: 8, end: 20, color: 'bg-blue-900/30 text-blue-300 border-blue-900/50' },
     { label: '20-08', start: 20, end: 8, color: 'bg-indigo-900/30 text-indigo-300 border-indigo-900/50' },
-    { label: '08-08 (24h)', start: 8, end: 8, color: 'bg-purple-900/30 text-purple-300 border-purple-900/50' },
+    { label: '08-08', start: 8, end: 8, color: 'bg-purple-900/30 text-purple-300 border-purple-900/50' },
     { label: '09-21', start: 9, end: 21, color: 'bg-cyan-900/30 text-cyan-300 border-cyan-900/50' },
-    { label: '09-09 (24h)', start: 9, end: 9, color: 'bg-teal-900/30 text-teal-300 border-teal-900/50' },
+    { label: '09-09', start: 9, end: 9, color: 'bg-teal-900/30 text-teal-300 border-teal-900/50' },
     { label: '10-22', start: 10, end: 22, color: 'bg-emerald-900/30 text-emerald-300 border-emerald-900/50' },
   ];
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 h-full overflow-y-auto custom-scrollbar">
       
-      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-sm">
         <div>
            <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-3">
@@ -231,10 +227,9 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
         <div className="lg:col-span-1 space-y-4">
            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
               <div className="p-4 bg-slate-950/50 border-b border-slate-800">
-                 <h3 className="font-bold text-slate-200 text-sm uppercase tracking-wide">Slaugytojos</h3>
+                 <h3 className="font-bold text-slate-200 text-sm uppercase tracking-wide">Slaugytojos & Postai</h3>
               </div>
               
-              {/* Add Nurse Form */}
               <div className="p-3 border-b border-slate-800/50 bg-slate-900/50">
                   <div className="flex gap-2">
                       <input 
@@ -254,11 +249,11 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                   </div>
               </div>
 
-              <div className="p-3 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+              <div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
                  {nurses.map(nurse => (
-                    <div key={nurse.id} className={`flex items-center justify-between p-2 rounded-lg border transition-all ${nurse.isActive ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'}`}>
+                    <div key={nurse.id} className={`p-2 rounded-lg border transition-all ${nurse.isActive ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'}`}>
                         {editingId === nurse.id ? (
-                            <div className="flex-1 flex gap-2">
+                            <div className="flex gap-2 mb-2">
                                 <input 
                                     value={editName}
                                     onChange={(e) => setEditName(e.target.value)}
@@ -269,7 +264,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                 <button onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={14}/></button>
                             </div>
                         ) : deletingId === nurse.id ? (
-                             <div className="flex-1 flex items-center justify-between">
+                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-red-400 text-xs font-bold">Ištrinti?</span>
                                 <div className="flex gap-2">
                                     <button onClick={() => executeDelete(nurse.id, 'Nurse')} className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded">TAIP</button>
@@ -277,17 +272,34 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                 </div>
                             </div>
                         ) : (
-                            <>
+                            <div className="flex items-center justify-between mb-2">
                                 <label className="flex items-center gap-2 cursor-pointer flex-1">
                                     <input type="checkbox" className="sr-only" checked={!!nurse.isActive} onChange={() => toggleNurseActive(nurse.id)} />
                                     <span className={`w-2 h-2 rounded-full ${nurse.isActive ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
-                                    <span className={`text-sm ${nurse.isActive ? 'text-slate-200' : 'text-slate-500'}`}>{nurse.name}</span>
+                                    <span className={`text-sm font-medium ${nurse.isActive ? 'text-slate-200' : 'text-slate-500'}`}>{nurse.name}</span>
                                 </label>
-                                <div className="flex gap-1 ml-2">
+                                <div className="flex gap-1">
                                     <button onClick={() => startEditing(nurse)} className="text-slate-500 hover:text-blue-400 p-1 hover:bg-slate-700/50 rounded"><Edit2 size={12}/></button>
                                     <button onClick={() => initDelete(nurse.id)} className="text-slate-500 hover:text-red-400 p-1 hover:bg-slate-700/50 rounded"><Trash2 size={12}/></button>
                                 </div>
-                            </>
+                            </div>
+                        )}
+                        
+                        {/* Section Selector */}
+                        {nurse.isActive && (
+                           <div className="flex items-center gap-2 ml-4">
+                              <MapPin size={12} className="text-slate-500" />
+                              <select 
+                                value={nurse.assignedSection || ''} 
+                                onChange={(e) => handleNurseSectionChange(nurse.id, e.target.value)}
+                                className="flex-1 bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1 outline-none"
+                              >
+                                 <option value="" disabled>-- Priskirti postą --</option>
+                                 {PHYSICAL_SECTIONS.map(sec => (
+                                     <option key={sec} value={sec}>{sec}</option>
+                                 ))}
+                              </select>
+                           </div>
                         )}
                     </div>
                  ))}
@@ -296,7 +308,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
            </div>
         </div>
 
-        {/* RIGHT COLUMN: Doctors Timeline */}
+        {/* RIGHT COLUMN: Doctors Timeline (Existing Code) */}
         <div className="lg:col-span-3">
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
@@ -311,7 +323,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
               </div>
               
               <div className="p-4 overflow-x-auto">
-                 {/* Add Doctor Bar */}
                  <div className="flex items-center gap-2 mb-4 bg-slate-800/30 p-2 rounded border border-slate-800 max-w-md">
                       <span className="text-xs font-bold text-slate-500 uppercase px-2"><UserPlus size={16}/></span>
                       <input 
@@ -330,14 +341,12 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                       </button>
                  </div>
 
-                 {/* Timeline Header */}
                  <div className="relative h-6 mb-2 min-w-[600px] border-b border-slate-700">
                     {[0, 4, 8, 12, 16, 20, 24].map(h => (
                         <div key={h} className="absolute text-[10px] text-slate-500 transform -translate-x-1/2" style={{ left: `${(h / 24) * 100}%` }}>
                             {new Date(timelineStart.getTime() + h * 60 * 60 * 1000).getHours()}:00
                         </div>
                     ))}
-                    {/* Current Time Marker */}
                     <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10" style={{ left: `${currentTimePos}%` }}></div>
                  </div>
 
@@ -347,9 +356,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                         const stats = getDoctorStats(doc.id);
                         const shiftStartPos = shift ? getPosition(shift.start) : 0;
                         const shiftEndPos = shift ? getPosition(shift.end) : 0;
-                        const shiftWidth = Math.max(shiftEndPos - shiftStartPos, 1); // Min 1% width
-                        
-                        // Check if shift ending soon (within 1 hour)
+                        const shiftWidth = Math.max(shiftEndPos - shiftStartPos, 1);
                         const isEndingSoon = shift && (new Date(shift.end).getTime() - currentTime.getTime() > 0) && (new Date(shift.end).getTime() - currentTime.getTime() < 3600000);
 
                         return (
@@ -396,8 +403,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                         )}
                                     </div>
 
-                                    {/* Shift Controls */}
-                                    <div className="flex flex-wrap gap-1 opacity-20 group-hover:opacity-100 transition justify-end max-w-sm">
+                                    <div className="grid grid-cols-3 xl:grid-cols-6 gap-1 opacity-20 group-hover:opacity-100 transition justify-end w-full max-w-xl">
                                         {!shift ? (
                                             SHIFT_BUTTONS.map((btn) => (
                                               <button
@@ -409,7 +415,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                               </button>
                                             ))
                                         ) : (
-                                            <button onClick={() => removeShift(shift.id)} className="p-1 text-red-400 hover:bg-red-900/30 rounded border border-transparent hover:border-red-900/50 flex items-center gap-1" title="Ištrinti pamainą">
+                                            <button onClick={() => removeShift(shift.id)} className="p-1 text-red-400 hover:bg-red-900/30 rounded border border-transparent hover:border-red-900/50 flex items-center gap-1 col-span-3 xl:col-span-6 justify-center" title="Ištrinti pamainą">
                                                 <Trash2 size={14}/>
                                                 <span className="text-xs">Atšaukti</span>
                                             </button>
@@ -417,7 +423,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Timeline Track */}
                                 <div className="relative h-8 bg-slate-900 rounded border border-slate-700 mt-2 overflow-hidden">
                                      <div className="absolute top-0 bottom-0 w-px bg-red-500/50 z-20" style={{ left: `${currentTimePos}%` }}></div>
                                      {[0, 20, 40, 60, 80].map(p => <div key={p} className="absolute top-0 bottom-0 w-px bg-slate-800" style={{ left: `${p}%` }}></div>)}
@@ -429,7 +434,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                             `}
                                             style={{ left: `${shiftStartPos}%`, width: `${shiftWidth}%` }}
                                          >
-                                             {/* Start Time Input Overlay */}
                                              <input 
                                                 type="time" 
                                                 className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center"
@@ -440,7 +444,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                              
                                              {isEndingSoon && <AlertTriangle size={12} className="animate-pulse text-white mx-auto"/>}
 
-                                             {/* End Time Input Overlay */}
                                               <input 
                                                 type="time" 
                                                 className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center"
@@ -462,7 +465,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
               </div>
             </div>
         </div>
-
       </div>
     </div>
   );

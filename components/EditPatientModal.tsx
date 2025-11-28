@@ -594,7 +594,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
         <div className="bg-slate-950 text-white p-4 flex justify-between items-center border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
             <span className="font-bold text-xl bg-slate-800 px-3 py-1 rounded text-slate-100">Lova {formData.label}</span>
-            <span className="text-slate-400 text-sm">Postas: {formData.section}</span>
+            <span className="text-slate-400 text-sm">{formData.section}</span>
           </div>
           <button onClick={handleCloseAttempt} className="hover:bg-slate-800 p-1 rounded transition text-slate-400 hover:text-white">
             <X size={20} />
