@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Bed, Staff, UserProfile, MedicationStatus } from '../types';
+import { Bed, Staff, UserProfile, MedicationStatus, PatientStatus } from '../types';
 import { TRIAGE_COLORS, STATUS_COLORS } from '../constants';
-import { ClipboardList, Filter, Search, Pill, Microscope, FileImage, Activity, Clock, CheckCircle, ArrowRight, User, Stethoscope, Syringe, Waves, HeartPulse } from 'lucide-react';
+import { ClipboardList, Filter, Search, Pill, Microscope, FileImage, Activity, Clock, CheckCircle, ArrowRight, User, Stethoscope, Syringe, Waves, HeartPulse, Sparkles } from 'lucide-react';
 
 interface TasksViewProps {
   beds: Bed[];
@@ -11,7 +11,7 @@ interface TasksViewProps {
   onUpdateBed: (bed: Bed) => void;
 }
 
-type TaskType = 'MEDICATION' | 'ACTION';
+type TaskType = 'MEDICATION' | 'ACTION' | 'CLEANING';
 
 interface TaskItem {
   id: string;
@@ -55,11 +55,31 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
     const now = new Date().getTime();
 
     beds.forEach(bed => {
-      if (!bed.patient || bed.status === 'Laisva') return;
+      // 1. Bed Cleaning Tasks
+      if (bed.status === PatientStatus.CLEANING) {
+         allTasks.push({
+             id: `clean-${bed.id}`,
+             uniqueKey: `clean-${bed.id}`,
+             type: 'CLEANING',
+             subType: 'HOUSEKEEPING',
+             bed: bed,
+             patientName: 'Išrašytas / Perkeltas',
+             triageCategory: 0, // Neutral
+             description: 'Lovos Valymas',
+             details: 'Paruošti naujam pacientui',
+             timestamp: new Date().toISOString(), // Use current time as placeholder
+             isOverdue: true, // Always show as high priority/attention
+             isUrgent: false,
+             doctorName: '-'
+         });
+      }
+
+      // Skip empty beds for patient tasks
+      if (!bed.patient) return;
 
       const docName = doctors.find(d => d.id === bed.assignedDoctorId)?.name;
 
-      // 1. Medications
+      // 2. Medications
       if (bed.patient.medications) {
         bed.patient.medications.forEach(med => {
           if (med.status === MedicationStatus.PENDING) {
@@ -85,7 +105,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
         });
       }
 
-      // 2. Clinical Actions
+      // 3. Clinical Actions
       if (bed.patient.actions) {
         bed.patient.actions.forEach(action => {
           if (!action.isCompleted) {
@@ -130,7 +150,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
 
     // Type Filter
     if (filterType === 'MEDS' && task.type !== 'MEDICATION') return false;
-    if (filterType === 'ACTIONS' && task.type !== 'ACTION') return false;
+    if (filterType === 'ACTIONS' && task.type !== 'ACTION' && task.type !== 'CLEANING') return false; // Cleaning is considered an action type task
 
     // Search
     if (searchQuery) {
@@ -151,6 +171,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
           case 'XRAY': case 'CT': return <FileImage size={16} className="text-yellow-400"/>;
           case 'EKG': return <HeartPulse size={16} className="text-red-400"/>;
           case 'ULTRASOUND': return <Waves size={16} className="text-cyan-400"/>;
+          case 'CLEANING': case 'HOUSEKEEPING': return <Sparkles size={16} className="text-slate-200"/>;
           default: return <ClipboardList size={16} className="text-purple-400"/>;
       }
   };
@@ -162,25 +183,32 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
       setTimeout(() => {
           // Perform actual update
           const updatedBed = { ...task.bed };
-          if (!updatedBed.patient) return;
 
-          if (task.type === 'MEDICATION') {
-              updatedBed.patient.medications = updatedBed.patient.medications?.map(m => 
-                  m.id === task.id ? { 
-                      ...m, 
-                      status: MedicationStatus.GIVEN, 
-                      administeredBy: currentUser.id, 
-                      administeredAt: new Date().toISOString() 
-                  } : m
-              );
-          } else {
-              updatedBed.patient.actions = updatedBed.patient.actions?.map(a => 
-                  a.id === task.id ? { 
-                      ...a, 
-                      isCompleted: true, 
-                      completedAt: new Date().toISOString() 
-                  } : a
-              );
+          if (task.type === 'CLEANING') {
+              updatedBed.status = PatientStatus.EMPTY;
+              updatedBed.patient = undefined;
+              updatedBed.assignedDoctorId = undefined;
+              updatedBed.comment = '';
+          } 
+          else if (updatedBed.patient) {
+              if (task.type === 'MEDICATION') {
+                  updatedBed.patient.medications = updatedBed.patient.medications?.map(m => 
+                      m.id === task.id ? { 
+                          ...m, 
+                          status: MedicationStatus.GIVEN, 
+                          administeredBy: currentUser.id, 
+                          administeredAt: new Date().toISOString() 
+                      } : m
+                  );
+              } else if (task.type === 'ACTION') {
+                  updatedBed.patient.actions = updatedBed.patient.actions?.map(a => 
+                      a.id === task.id ? { 
+                          ...a, 
+                          isCompleted: true, 
+                          completedAt: new Date().toISOString() 
+                      } : a
+                  );
+              }
           }
 
           onUpdateBed(updatedBed);
@@ -201,7 +229,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
                <div className="bg-slate-800 p-2 rounded-lg"><ClipboardList size={24} className="text-emerald-500" /></div>
                Klinikinės Užduotys
             </h2>
-            <p className="text-slate-400 text-sm mt-1">Laukiantys vaistai ir tyrimai</p>
+            <p className="text-slate-400 text-sm mt-1">Laukiantys vaistai, tyrimai ir lovų paruošimas</p>
         </div>
         
         <div className="flex gap-4">
@@ -293,6 +321,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
                  {filteredTasks.map((task) => {
                      const isCompleting = completingIds.includes(task.id);
                      const isMed = task.type === 'MEDICATION';
+                     const isCleaning = task.type === 'CLEANING';
                      
                      return (
                          <div 
@@ -300,44 +329,51 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
                             className={`
                                 relative bg-slate-900 border rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center gap-4 transition-all duration-500
                                 ${isCompleting ? 'opacity-0 transform translate-x-full' : 'opacity-100'}
-                                ${task.isOverdue ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800 hover:border-slate-700'}
+                                ${isCleaning ? 'border-dashed border-slate-600 bg-slate-900/80' : task.isOverdue ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800 hover:border-slate-700'}
                             `}
                          >
                              {/* Time & Status */}
                              <div className="flex flex-row md:flex-col items-center gap-2 md:w-24 shrink-0">
-                                 <div className={`text-sm font-mono font-bold ${task.isOverdue ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>
-                                     {new Date(task.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                                 <div className={`text-sm font-mono font-bold ${isCleaning ? 'text-slate-500' : task.isOverdue ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>
+                                     {isCleaning ? '--:--' : new Date(task.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                                  </div>
-                                 {task.isOverdue && (
+                                 {task.isOverdue && !isCleaning && (
                                      <div className="flex items-center gap-1 text-[10px] bg-red-900/20 text-red-400 px-1.5 py-0.5 rounded border border-red-900/30 uppercase font-bold">
                                          <Clock size={10} /> Vėluoja
+                                     </div>
+                                 )}
+                                 {isCleaning && (
+                                     <div className="flex items-center gap-1 text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700 uppercase font-bold">
+                                         <Sparkles size={10} /> Valyti
                                      </div>
                                  )}
                              </div>
 
                              {/* Location & Patient */}
                              <div className="flex items-center gap-4 md:w-64 shrink-0">
-                                 <div className="flex flex-col items-center justify-center bg-slate-800 w-12 h-12 rounded-lg border border-slate-700 shrink-0">
+                                 <div className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg border shrink-0 ${isCleaning ? 'bg-slate-800 border-slate-600' : 'bg-slate-800 border-slate-700'}`}>
                                      <span className="text-xs text-slate-500 uppercase">Lova</span>
                                      <span className="text-lg font-bold text-slate-200">{task.bed.label}</span>
                                  </div>
                                  <div>
                                      <div className="flex items-center gap-2">
-                                         <span className="font-bold text-slate-200">{task.patientName}</span>
-                                         <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${TRIAGE_COLORS[task.triageCategory]}`}>
-                                             {task.triageCategory}
-                                         </span>
+                                         <span className={`font-bold ${isCleaning ? 'text-slate-500 italic' : 'text-slate-200'}`}>{task.patientName}</span>
+                                         {!isCleaning && (
+                                            <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${TRIAGE_COLORS[task.triageCategory]}`}>
+                                                {task.triageCategory}
+                                            </span>
+                                         )}
                                      </div>
                                      <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                         <Stethoscope size={10} /> {task.doctorName || 'Gydytojas'}
+                                         <Stethoscope size={10} /> {task.doctorName || '-'}
                                      </div>
                                  </div>
                              </div>
 
                              {/* Task Details */}
                              <div className="flex-1 flex items-center gap-3 w-full">
-                                 <div className={`p-2.5 rounded-full shrink-0 ${isMed ? 'bg-blue-900/20 text-blue-400' : 'bg-yellow-900/20 text-yellow-400'}`}>
-                                     {isMed ? <Syringe size={20} /> : getActionIcon(task.details)}
+                                 <div className={`p-2.5 rounded-full shrink-0 ${isMed ? 'bg-blue-900/20 text-blue-400' : isCleaning ? 'bg-slate-800 text-slate-400' : 'bg-yellow-900/20 text-yellow-400'}`}>
+                                     {isMed ? <Syringe size={20} /> : isCleaning ? <Sparkles size={20} /> : getActionIcon(task.details)}
                                  </div>
                                  <div>
                                      <div className="text-lg font-medium text-slate-200">{task.description}</div>
@@ -354,15 +390,18 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
                                         flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm shadow-lg transition-all w-full
                                         ${isMed 
                                             ? 'bg-green-600 hover:bg-green-700 text-white shadow-green-900/20' 
-                                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/20'}
+                                            : isCleaning
+                                                ? 'bg-slate-700 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-600 hover:border-emerald-500'
+                                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-900/20'}
                                     `}
                                  >
                                      {isCompleting ? (
                                          <CheckCircle size={18} className="animate-ping" />
                                      ) : (
                                          <>
-                                            {isMed ? 'SULEISTI' : 'ATLIKTA'}
-                                            <ArrowRight size={16} />
+                                            {isMed ? 'SULEISTI' : isCleaning ? 'IŠVALYTA' : 'ATLIKTA'}
+                                            {!isCleaning && <ArrowRight size={16} />}
+                                            {isCleaning && <CheckCircle size={16} />}
                                          </>
                                      )}
                                  </button>

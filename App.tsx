@@ -372,7 +372,11 @@ const App: React.FC = () => {
     const newBeds = beds.map(b => b.id === updatedBed.id ? updatedBed : b);
     setBeds(newBeds);
     
-    if (oldBed?.patient && (!updatedBed.patient || updatedBed.status === PatientStatus.EMPTY)) {
+    // Check if patient is being removed/discharged (bed becoming empty or cleaning)
+    // NOTE: We check if oldBed HAD a patient, and newBed DOES NOT (or status is cleaning/empty)
+    const isPatientRemoved = oldBed?.patient && (!updatedBed.patient);
+    
+    if (isPatientRemoved) {
       const docName = doctors.find(d => d.id === oldBed.assignedDoctorId)?.name;
       
       const logEntry: PatientLogEntry = {
@@ -415,12 +419,29 @@ const App: React.FC = () => {
     const updatedBed: Bed = {
       ...bed,
       patient: undefined,
-      status: PatientStatus.EMPTY,
+      status: PatientStatus.CLEANING, // CHANGED: Go to Cleaning instead of Empty
       comment: '',
       assignedDoctorId: undefined
     };
     await handleSaveBed(updatedBed);
-    addNotification('SUCCESS', `Pacientas išrašytas iš lovos ${bed.label}`);
+    addNotification('SUCCESS', `Pacientas išrašytas iš lovos ${bed.label}. Lova pažymėta kaip "Valoma".`);
+  };
+
+  // NEW: Helper to mark bed as clean/empty
+  const handleMarkBedClean = async (bed: Bed) => {
+      const updatedBed: Bed = {
+          ...bed,
+          status: PatientStatus.EMPTY,
+          comment: '',
+          assignedDoctorId: undefined,
+          patient: undefined
+      };
+      // We don't call handleSaveBed because we don't need to log discharge again (it was done when moving to CLEANING)
+      // But we need to save the state
+      const newBeds = beds.map(b => b.id === updatedBed.id ? updatedBed : b);
+      setBeds(newBeds);
+      await DataService.saveBeds(newBeds);
+      addNotification('SUCCESS', `Lova ${bed.label} išvalyta ir paruošta.`);
   };
 
   const handleResetData = async () => {
@@ -465,7 +486,7 @@ const App: React.FC = () => {
     newBeds[fromIndex] = {
       ...fromBed,
       patient: toBed.patient,
-      status: toBed.status,
+      status: toBed.status === PatientStatus.EMPTY ? PatientStatus.CLEANING : toBed.status, // If we move patient out, old bed becomes CLEANING
       assignedDoctorId: toBed.assignedDoctorId,
       comment: toBed.comment
     };
@@ -512,6 +533,8 @@ const App: React.FC = () => {
     if (activeTab === 'general' && isAmbulatory) return false;
     if (activeTab === 'ambulatory' && !isAmbulatory) return false;
 
+    // Filter logic adjustment: If filtering by status EMPTY, don't show CLEANING beds (they are not empty yet)
+    // But if filtering ALL, show them.
     if (filterStatus !== 'ALL' && bed.status !== filterStatus) return false;
     
     if (filterNurse !== 'ALL') {
@@ -536,13 +559,13 @@ const App: React.FC = () => {
   });
 
   const totalBedsCount = beds.length;
-  const occupiedBedsCount = beds.filter(b => b && b.status !== PatientStatus.EMPTY).length;
+  const occupiedBedsCount = beds.filter(b => b && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
   const criticalPatients = beds.filter(b => b && b.patient && b.patient.triageCategory <= 2).length;
   const waitingPatients = beds.filter(b => b && b.status === PatientStatus.WAITING_EXAM).length;
   const unreadCount = notifications.length;
 
-  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorija' && b.status !== PatientStatus.EMPTY).length;
-  const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorija' && b.status !== PatientStatus.EMPTY).length;
+  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorija' && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
+  const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorija' && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
 
   const isTriageMode = currentUser && currentUser.assignedSection === 'Triažas';
   const isAdmin = currentUser && currentUser.role === 'Admin';
@@ -896,6 +919,7 @@ const App: React.FC = () => {
                 onRowClick={handleBedClick}
                 onDischarge={handleQuickDischarge}
                 onStatusChange={handleQuickStatusChange}
+                onCleanBed={handleMarkBedClean} // Pass cleaning handler
                />
             </div>
           ) : viewMode === 'map' ? (
@@ -906,6 +930,7 @@ const App: React.FC = () => {
                  nurses={nurses} 
                  onBedClick={handleBedClick} 
                  onMovePatient={handleMovePatient}
+                 onCleanBed={handleMarkBedClean} // Pass cleaning handler
                />
             </div>
           ) : viewMode === 'tasks' ? ( // Tasks View

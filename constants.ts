@@ -312,6 +312,7 @@ export const INITIAL_BEDS: Bed[] = [
 
 export const STATUS_COLORS: Record<PatientStatus, string> = {
   [PatientStatus.EMPTY]: 'bg-slate-900/50 text-slate-700 border-slate-800',
+  [PatientStatus.CLEANING]: 'bg-slate-800/80 text-slate-400 border-slate-600 border-dashed', // NEW: Housekeeping visual style
   [PatientStatus.WAITING_EXAM]: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   [PatientStatus.ADMITTING]: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-900/20',
   [PatientStatus.DISCHARGE]: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-900/20',

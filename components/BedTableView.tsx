@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { STATUS_COLORS, TRIAGE_COLORS } from '../constants';
-import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X, ChevronDown, User } from 'lucide-react';
+import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X, ChevronDown, User, Sparkles } from 'lucide-react';
 
 interface BedTableViewProps {
   beds: Bed[];
@@ -11,9 +11,10 @@ interface BedTableViewProps {
   onRowClick: (bed: Bed) => void;
   onDischarge: (bed: Bed) => void;
   onStatusChange: (bed: Bed, newStatus: PatientStatus) => void;
+  onCleanBed: (bed: Bed) => void; // NEW
 }
 
-const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRowClick, onDischarge, onStatusChange }) => {
+const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRowClick, onDischarge, onStatusChange, onCleanBed }) => {
   const [confirmDischargeId, setConfirmDischargeId] = useState<string | null>(null);
 
   // Group beds by section (Section Name)
@@ -41,6 +42,7 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
       case PatientStatus.IV_DRIP: return <Syringe size={14} className="ml-1" />;
       case PatientStatus.WAITING_EXAM: return <Clock size={14} className="ml-1" />;
       case PatientStatus.ADMITTING: return <div className="ml-1">➡️ 🛏️</div>;
+      case PatientStatus.CLEANING: return <Sparkles size={14} className="ml-1 text-slate-400" />;
       default: return null;
     }
   };
@@ -99,6 +101,11 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
     setConfirmDischargeId(null);
   };
 
+  const handleCleanClick = (e: React.MouseEvent, bed: Bed) => {
+      e.stopPropagation();
+      onCleanBed(bed);
+  };
+
   return (
     <div className="overflow-x-auto border-0 bg-slate-900 shadow-sm">
       <table className="w-full text-sm border-collapse">
@@ -129,6 +136,7 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
                 const isIT = bed.label.startsWith('IT');
                 const isAmb = bed.label.startsWith('A') && !bed.label.startsWith('Arm');
                 const isSpecial = bed.label.startsWith('S') || bed.label.startsWith('P');
+                const isCleaning = bed.status === PatientStatus.CLEANING;
 
                 let bedLabelClass = 'bg-slate-800 text-slate-400';
                 if (isIT) bedLabelClass = 'bg-blue-900/40 text-blue-200';
@@ -178,12 +186,19 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
                     </td>
 
                     <td onClick={() => onRowClick(bed)} className={`px-4 py-2 border-r border-slate-800 font-medium cursor-pointer ${!bed.patient ? 'text-slate-600 italic' : 'text-slate-200'}`}>
-                      {bed.patient ? bed.patient.name : 'Laisva'}
+                      {bed.patient ? bed.patient.name : isCleaning ? '---' : 'Laisva'}
                     </td>
 
-                    {/* Status Cell - Modified to be a dropdown if occupied */}
+                    {/* Status Cell - Modified to be a dropdown if occupied, or button if cleaning */}
                     <td onClick={(e) => bed.status !== PatientStatus.EMPTY && e.stopPropagation()} className={`px-2 py-1 border-r border-slate-800 ${bed.status === PatientStatus.EMPTY ? 'cursor-pointer' : ''}`} onClickCapture={bed.status === PatientStatus.EMPTY ? () => onRowClick(bed) : undefined}>
-                       {bed.status !== PatientStatus.EMPTY ? (
+                       {isCleaning ? (
+                           <button 
+                             onClick={(e) => handleCleanClick(e, bed)}
+                             className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-bold bg-slate-700 hover:bg-emerald-600 text-slate-300 hover:text-white transition shadow-sm border border-slate-600 hover:border-emerald-500"
+                           >
+                               <Sparkles size={12} /> Išvalyti
+                           </button>
+                       ) : bed.status !== PatientStatus.EMPTY ? (
                          <div className={`relative px-2 py-1 rounded text-xs font-semibold border shadow-sm ${STATUS_COLORS[bed.status]} group/status hover:opacity-90`}>
                             <select
                                 value={bed.status}

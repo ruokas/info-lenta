@@ -30,12 +30,12 @@ const TriageModal: React.FC<TriageModalProps> = ({ isOpen, onClose, beds, doctor
   // Bed Filters Definitions
   const BED_FILTERS = [
     { id: 'ALL', label: 'Visos' },
-    { id: 'MONITOR', label: 'Monitor (1-17)' },
-    { id: 'IT', label: 'IT (Reanim)' },
+    { id: 'MONITOR', label: 'Monitor' },
+    { id: 'IT', label: 'IT' },
     { id: 'ISO', label: 'Izoliacinės' },
-    { id: 'EXTRA', label: 'Papildomos (P)' },
-    { id: 'SEATED', label: 'Sėdimos (S)' },
-    { id: 'RESERVE', label: 'Rezervinės (R)' },
+    { id: 'EXTRA', label: 'Papildomos' },
+    { id: 'SEATED', label: 'Sėdimos' },
+    { id: 'RESERVE', label: 'Rezerv' },
   ];
 
   // Filter Active Doctors
@@ -155,155 +155,172 @@ const TriageModal: React.FC<TriageModalProps> = ({ isOpen, onClose, beds, doctor
   };
 
   const ESI_DESC = {
-      1: "Reikia neatidėliotinos intervencijos gyvybei gelbėti",
-      2: "Didelė rizika, sąmonės sutrikimas arba stiprus skausmas",
-      3: "Reikia daug resursų (2 ar daugiau tyrimų/procedūrų)",
-      4: "Reikia vieno resurso (1 tyrimas/procedūra)",
-      5: "Nereikia resursų (tik apžiūra/receptas)"
+      1: "Neatidėliotina intervencija",
+      2: "Didelė rizika / Sunkus skausmas",
+      3: "Daug resursų (2+ tyrimai)",
+      4: "Vienas resursas",
+      5: "Nereikia resursų"
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-300">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-300" style={{ maxHeight: '95vh' }}>
         
         {/* Header */}
-        <div className="bg-slate-950 p-5 border-b border-slate-800 flex justify-between items-center shrink-0">
-           <div>
-              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                <span className="bg-blue-600 p-2 rounded-lg"><UserPlus size={24}/></span>
-                Naujas Pacientas
-              </h2>
-              <p className="text-slate-400 text-sm mt-1">Greita registracija (Triažas)</p>
+        <div className="bg-slate-950 px-5 py-3 border-b border-slate-800 flex justify-between items-center shrink-0">
+           <div className="flex items-center gap-3">
+              <span className="bg-blue-600 p-1.5 rounded-lg"><UserPlus size={20}/></span>
+              <div>
+                <h2 className="text-lg font-bold text-white leading-none">Naujas Pacientas</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Greita registracija</p>
+              </div>
            </div>
-           <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition">
-             <X size={28} />
+           <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition">
+             <X size={24} />
            </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-           <form id="triage-form" onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+           <form id="triage-form" onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
               
               {/* LEFT COLUMN: Patient Info */}
-              <div className="space-y-6">
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Vardas Pavardė</label>
-                    <input 
-                      type="text" 
-                      autoFocus
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-lg text-white focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-slate-600"
-                      placeholder="Įveskite vardą..."
-                    />
-                 </div>
-
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Simptomai</label>
-                    <textarea 
-                      rows={2}
-                      value={symptoms}
-                      onChange={(e) => setSymptoms(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-slate-600"
-                      placeholder="Pagrindiniai nusiskundimai..."
-                    />
-                 </div>
-
-                 {/* Doctor Selection with ARPA */}
-                 <div>
-                     <div className="flex justify-between items-center mb-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Gydytojas (Pasirinktinai)</label>
-                        <button 
-                            type="button" 
-                            onClick={calculateArpaSuggestions}
-                            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-2 py-1 rounded border border-blue-800 hover:border-blue-500 transition"
-                        >
-                            <Sparkles size={12} />
-                            Siūlyti (ARPA)
-                        </button>
+              <div className="flex flex-col gap-4">
+                 <div className="bg-slate-950/30 p-4 rounded-xl border border-slate-800/50 space-y-3">
+                     <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Vardas Pavardė</label>
+                        <input 
+                          type="text" 
+                          autoFocus
+                          required
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-base text-white focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-slate-600"
+                          placeholder="Įveskite vardą..."
+                        />
                      </div>
-                     <div className="relative">
-                        <Stethoscope className="absolute left-3 top-3 text-slate-500" size={18} />
-                        <select
-                            value={assignedDoctorId}
-                            onChange={(e) => setAssignedDoctorId(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
-                        >
-                            <option value="">-- Nepriskirta --</option>
-                            {activeDoctors.map(doc => (
-                                <option key={doc.id} value={doc.id}>{doc.name}</option>
-                            ))}
-                        </select>
+
+                     <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Simptomai</label>
+                        <input
+                          type="text" 
+                          value={symptoms}
+                          onChange={(e) => setSymptoms(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none placeholder:text-slate-600"
+                          placeholder="Pagrindiniai nusiskundimai..."
+                        />
                      </div>
-                     {suggestedDoctor && (
-                        <div className="mt-2 text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-900/50 p-2 rounded flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
-                            <Sparkles size={12} />
-                            <span>Siūloma: <strong>{suggestedDoctor.name}</strong> (Balas: {suggestedDoctor.score.toFixed(1)})</span>
-                        </div>
-                     )}
+
+                     {/* Doctor Selection with ARPA */}
+                     <div>
+                         <div className="flex justify-between items-center mb-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">Gydytojas</label>
+                            <button 
+                                type="button" 
+                                onClick={calculateArpaSuggestions}
+                                className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-white bg-blue-900/20 hover:bg-blue-600 px-2 py-0.5 rounded border border-blue-800 hover:border-blue-500 transition"
+                            >
+                                <Sparkles size={10} />
+                                Siūlyti (ARPA)
+                            </button>
+                         </div>
+                         <div className="relative">
+                            <Stethoscope className="absolute left-3 top-2.5 text-slate-500" size={16} />
+                            <select
+                                value={assignedDoctorId}
+                                onChange={(e) => setAssignedDoctorId(e.target.value)}
+                                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
+                            >
+                                <option value="">-- Nepriskirta --</option>
+                                {activeDoctors.map(doc => (
+                                    <option key={doc.id} value={doc.id}>{doc.name}</option>
+                                ))}
+                            </select>
+                         </div>
+                         {suggestedDoctor && (
+                            <div className="mt-1 text-[10px] text-emerald-400 flex items-center gap-1 animate-in fade-in slide-in-from-top-1">
+                                <Sparkles size={10} />
+                                <span>Siūloma: <strong>{suggestedDoctor.name}</strong> (Balas: {suggestedDoctor.score.toFixed(1)})</span>
+                            </div>
+                         )}
+                     </div>
                  </div>
 
-                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-3">Skubos Kategorija (ESI)</label>
-                    <div className="grid grid-cols-1 gap-3">
-                       {[1, 2, 3, 4, 5].map((cat) => (
+                 <div className="flex-1 bg-slate-950/30 p-4 rounded-xl border border-slate-800/50 flex flex-col">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Skubos Kategorija (ESI)</label>
+                    <div className="flex flex-col gap-2 h-full overflow-y-auto">
+                       {[1, 2, 3, 4, 5].map((cat) => {
+                         const catNum = cat as keyof typeof ESI_DESC;
+                         const isSelected = category === cat;
+                         
+                         return (
                          <button
                            key={cat}
                            type="button"
                            onClick={() => setCategory(cat as TriageCategory)}
                            className={`
-                             relative p-3 rounded-xl border-2 text-left transition-all duration-200 flex items-center justify-between group
-                             ${category === cat 
-                                ? 'border-white bg-slate-800 scale-[1.02] shadow-xl' 
-                                : 'border-slate-800 bg-slate-900/40 hover:bg-slate-800 hover:border-slate-700'}
+                             relative w-full flex items-center gap-3 px-3 py-3 rounded-xl border transition-all duration-200 group
+                             ${isSelected
+                                ? `${TRIAGE_COLORS[cat]} border-transparent shadow-md scale-[1.01]` 
+                                : `bg-slate-900 border-slate-800 hover:bg-slate-800 hover:border-slate-600`}
                            `}
                          >
-                            <div className="flex items-center gap-4">
-                               <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl font-bold shadow-lg shrink-0 ${TRIAGE_COLORS[cat]}`}>
-                                  {cat}
-                               </div>
-                               <div>
-                                  <div className={`font-bold text-sm ${category === cat ? 'text-white' : 'text-slate-300'}`}>
-                                     {ESI_DESC[cat as keyof typeof ESI_DESC]}
-                                  </div>
-                               </div>
+                            <div className={`
+                                w-10 h-10 rounded-full flex items-center justify-center font-bold text-xl border-2 shrink-0
+                                ${isSelected
+                                    ? 'border-white/30 bg-white/10' 
+                                    : `${TRIAGE_COLORS[cat]} border-transparent shadow-sm`}
+                            `}>
+                                {cat}
                             </div>
-                            {category === cat && <CheckCircle className="text-green-500" size={24} />}
+                            
+                            <div className="flex-1 text-left">
+                                <div className={`text-sm font-bold uppercase leading-none ${
+                                    isSelected
+                                        ? (cat === 3 || cat === 5 ? 'text-slate-900' : 'text-white') 
+                                        : 'text-slate-300'
+                                }`}>
+                                    {ESI_DESC[catNum]}
+                                </div>
+                            </div>
+
+                            {isSelected && (
+                                <CheckCircle className={`${cat === 3 || cat === 5 ? 'text-slate-900' : 'text-white'}`} size={24} />
+                            )}
                          </button>
-                       ))}
+                       )})}
                     </div>
                  </div>
               </div>
 
               {/* RIGHT COLUMN: Bed Selection */}
-              <div className="bg-slate-950/50 rounded-xl border border-slate-800 p-6 flex flex-col h-full overflow-hidden">
-                 <div className="flex justify-between items-center mb-4 shrink-0">
-                    <label className="text-sm font-bold text-slate-400 uppercase">Pasirinkite Lovą</label>
-                    <div className="text-xs text-slate-500 font-mono">Laisva: {emptyBeds.length}</div>
+              <div className="bg-slate-950/50 rounded-xl border border-slate-800 p-4 flex flex-col h-full overflow-hidden">
+                 <div className="flex justify-between items-center mb-3 shrink-0">
+                    <label className="text-xs font-bold text-slate-400 uppercase">Pasirinkite Lovą</label>
+                    <div className="text-[10px] text-slate-500 font-mono">Laisva: {emptyBeds.length}</div>
                  </div>
 
                  {/* Filters */}
-                 <div className="flex flex-col gap-3 mb-4 shrink-0">
+                 <div className="flex flex-col gap-2 mb-3 shrink-0">
                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
                         <input 
                         type="text" 
                         placeholder="Ieškoti lovos..." 
                         value={bedSearch}
                         onChange={(e) => setBedSearch(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-9 pr-2 py-2 text-sm text-white outline-none focus:border-blue-500"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-2 py-1.5 text-sm text-white outline-none focus:border-blue-500"
                         />
                      </div>
                      
-                     <div className="flex flex-wrap gap-2">
+                     <div className="flex flex-wrap gap-1.5">
                         {BED_FILTERS.map(filter => (
                           <button
                             key={filter.id}
                             type="button"
                             onClick={() => setSelectedBedCategory(filter.id)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${selectedBedCategory === filter.id ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-700'}`}
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${selectedBedCategory === filter.id ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-700'}`}
                           >
                             {filter.label}
                           </button>
@@ -311,7 +328,7 @@ const TriageModal: React.FC<TriageModalProps> = ({ isOpen, onClose, beds, doctor
                      </div>
                  </div>
                  
-                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 grid grid-cols-2 sm:grid-cols-3 gap-3 content-start">
+                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 gap-2 content-start min-h-[200px]">
                     {filteredBeds.map(bed => {
                        const isAmb = bed.label.startsWith('A') && !bed.label.startsWith('Arm');
                        const isR = bed.label.startsWith('R');
@@ -321,21 +338,21 @@ const TriageModal: React.FC<TriageModalProps> = ({ isOpen, onClose, beds, doctor
                          type="button"
                          onClick={() => setSelectedBedId(bed.id)}
                          className={`
-                           p-3 rounded-xl border transition-all duration-200 flex flex-col items-center justify-center gap-1
+                           p-2 rounded-lg border transition-all duration-200 flex flex-col items-center justify-center gap-0.5
                            ${selectedBedId === bed.id 
-                             ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-900/40 scale-105' 
+                             ? 'bg-blue-600 border-blue-400 text-white shadow-md scale-105' 
                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-500'}
                            ${isAmb && selectedBedId !== bed.id ? 'border-amber-900/30' : ''}
                            ${isR && selectedBedId !== bed.id ? 'border-purple-900/30 bg-purple-900/10' : ''}
                          `}
                        >
-                          <span className="text-xl font-bold">{bed.label}</span>
-                          <span className={`text-[10px] uppercase opacity-70 truncate max-w-full px-1 ${isAmb ? 'text-amber-500' : isR ? 'text-purple-400' : ''}`}>{bed.section}</span>
+                          <span className="text-base font-bold">{bed.label}</span>
+                          <span className={`text-[9px] uppercase opacity-70 truncate max-w-full px-1 ${isAmb ? 'text-amber-500' : isR ? 'text-purple-400' : ''}`}>{bed.section}</span>
                        </button>
                     )})}
                     {filteredBeds.length === 0 && (
-                       <div className="col-span-full text-center py-10 text-slate-500 italic">
-                          Nerasta laisvų lovų pagal filtrus.
+                       <div className="col-span-full text-center py-10 text-slate-500 italic text-xs">
+                          Nerasta laisvų lovų.
                        </div>
                     )}
                  </div>
@@ -345,11 +362,11 @@ const TriageModal: React.FC<TriageModalProps> = ({ isOpen, onClose, beds, doctor
         </div>
 
         {/* Footer */}
-        <div className="bg-slate-950 p-5 border-t border-slate-800 flex justify-end gap-4 shrink-0">
+        <div className="bg-slate-950 p-3 border-t border-slate-800 flex justify-end gap-3 shrink-0">
            <button 
              type="button" 
              onClick={onClose}
-             className="px-6 py-3 rounded-xl font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition"
+             className="px-4 py-2 rounded-lg font-bold text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition"
            >
              Atšaukti
            </button>
@@ -357,10 +374,10 @@ const TriageModal: React.FC<TriageModalProps> = ({ isOpen, onClose, beds, doctor
              type="submit"
              form="triage-form"
              disabled={!name || !category || !selectedBedId}
-             className="px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-xl shadow-blue-900/30 transition transform hover:scale-[1.02] flex items-center gap-2"
+             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-lg shadow-blue-900/30 transition transform hover:scale-[1.02] flex items-center gap-2 text-sm"
            >
-             <UserPlus size={20} />
-             Registruoti Pacientą
+             <UserPlus size={18} />
+             Registruoti
            </button>
         </div>
 

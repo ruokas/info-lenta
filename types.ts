@@ -9,6 +9,7 @@ export enum TriageCategory {
 
 export enum PatientStatus {
   EMPTY = 'Laisva',
+  CLEANING = 'Valoma', // NEW: Housekeeping status
   WAITING_EXAM = 'Laukia apžiūros',
   ADMITTING = 'Guldomas',
   DISCHARGE = 'Išrašomas',
@@ -65,6 +66,9 @@ export interface Vitals {
   heartRate?: number;
   spO2?: number;
   temperature?: number;
+  respRate?: number; // NEW: Respiratory Rate for NEWS2
+  onOxygen?: boolean; // NEW: Is patient on supplemental oxygen?
+  consciousness?: 'Alert' | 'CVPU'; // NEW: AVPU scale (simplified for NEWS2: Alert vs Confusion/Voice/Pain/Unresponsive)
   lastUpdated: string;
 }
 

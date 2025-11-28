@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem, WorkShift } from '../types';
+import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem, WorkShift, Vitals } from '../types';
 import { MEDICATION_PROTOCOLS } from '../constants';
-import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles } from 'lucide-react';
+import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles, Wind, Thermometer, Brain } from 'lucide-react';
 
 interface EditPatientModalProps {
   bed: Bed;
@@ -210,9 +210,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     }));
   };
 
-  const handleVitalsChange = (field: string, value: string) => {
+  const handleVitalsChange = (field: string, value: any) => {
     if (!formData.patient) return;
-    const numValue = value === '' ? undefined : Number(value);
+    const numValue = (field === 'onOxygen' || field === 'consciousness') ? value : (value === '' ? undefined : Number(value));
+    
     setFormData(prev => ({
       ...prev,
       patient: {
@@ -226,18 +227,80 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     }));
   };
 
+  // --- NEWS2 Calculation Logic ---
+  const calculateNEWS2 = (vitals?: Vitals) => {
+    if (!vitals) return { score: 0, level: 'N/A' };
+    
+    let score = 0;
+
+    // 1. Respiration Rate
+    if (vitals.respRate) {
+        if (vitals.respRate <= 8) score += 3;
+        else if (vitals.respRate >= 25) score += 3;
+        else if (vitals.respRate >= 21) score += 2;
+        else if (vitals.respRate <= 11) score += 1;
+    }
+
+    // 2. SpO2
+    if (vitals.spO2) {
+        if (vitals.spO2 <= 91) score += 3;
+        else if (vitals.spO2 <= 93) score += 2;
+        else if (vitals.spO2 <= 95) score += 1;
+    }
+
+    // 3. Air or Oxygen?
+    if (vitals.onOxygen) score += 2;
+
+    // 4. Systolic Blood Pressure
+    if (vitals.bpSystolic) {
+        if (vitals.bpSystolic <= 90) score += 3;
+        else if (vitals.bpSystolic >= 220) score += 3;
+        else if (vitals.bpSystolic <= 100) score += 2;
+        else if (vitals.bpSystolic <= 110) score += 1;
+    }
+
+    // 5. Pulse
+    if (vitals.heartRate) {
+        if (vitals.heartRate <= 40) score += 3;
+        else if (vitals.heartRate >= 131) score += 3;
+        else if (vitals.heartRate >= 111) score += 2;
+        else if (vitals.heartRate <= 50) score += 1;
+        else if (vitals.heartRate >= 91) score += 1;
+    }
+
+    // 6. Consciousness
+    if (vitals.consciousness === 'CVPU') score += 3;
+
+    // 7. Temperature
+    if (vitals.temperature) {
+        if (vitals.temperature <= 35.0) score += 3;
+        else if (vitals.temperature >= 39.1) score += 2;
+        else if (vitals.temperature <= 36.0) score += 1;
+        else if (vitals.temperature >= 38.1) score += 1;
+    }
+
+    let level = 'Low';
+    if (score >= 7) level = 'High';
+    else if (score >= 5) level = 'Medium';
+    else if (score >= 1) level = 'Low';
+    
+    return { score, level };
+  };
+
+  const news2 = calculateNEWS2(formData.patient?.vitals);
+
   const handleAdmit = () => {
     const now = new Date();
     const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
     
     setFormData(prev => ({
       ...prev,
-      status: PatientStatus.WAITING_EXAM, // Changed from ADMITTING to WAITING_EXAM
+      status: PatientStatus.WAITING_EXAM,
       patient: {
         id: Date.now().toString(),
         name: '',
         symptoms: '',
-        triageCategory: 0 as TriageCategory, // Default to 0 (Unassigned)
+        triageCategory: 0 as TriageCategory, 
         arrivalTime: timeString,
         medications: [],
         actions: [],
@@ -259,20 +322,15 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
       docBeds.forEach(b => {
         const p = b.patient!;
-        // ESI Weight: I=5, II=4, III=3, IV=2, V=1
-        // TriageCategory enum is 1..5. So (6 - 1) = 5, (6 - 5) = 1.
         const wEsi = (6 - p.triageCategory); 
-        
-        // Status Weight: DISCHARGE=0.6, Others=1.0
         const wStatus = b.status === PatientStatus.DISCHARGE ? 0.6 : 1.0;
         if (b.status === PatientStatus.DISCHARGE) dischargeCount++;
 
-        // Age Bump: min(minutesSinceArrival/60, 2) * 0.15
         const [h, m] = p.arrivalTime.split(':').map(Number);
         const arrivalDate = new Date();
         arrivalDate.setHours(h, m, 0, 0);
         let diff = new Date().getTime() - arrivalDate.getTime();
-        if (diff < 0) diff += 24 * 60 * 60 * 1000; // handle midnight crossing
+        if (diff < 0) diff += 24 * 60 * 60 * 1000;
         const minutesSince = diff / 60000;
         const ageBump = Math.min(minutesSince / 60, 2) * 0.15;
 
@@ -281,52 +339,42 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
         if (arrivalDate.getTime() > latestArrival) latestArrival = arrivalDate.getTime();
       });
 
-      // Recency Penalty: If < 20 min since last patient arrival
       let recencyPenalty = 0;
       if (latestArrival > 0) {
         const minutesSinceLast = (new Date().getTime() - latestArrival) / 60000;
-        // Configurable step curve: +1.5 if < 20 mins
         if (minutesSinceLast < 20) recencyPenalty = 1.5; 
       }
 
-      // Capacity Penalty: If >= 5 active patients
       const maxSimul = 5;
       let capacityPenalty = docBeds.length >= maxSimul ? 3.0 : 0;
 
-      // Discharge Relief
       let dischargeRelief = 0;
       if (docBeds.length >= 2 && dischargeCount > 0) {
           const p = dischargeCount / docBeds.length;
-          // min(0.5, p * 0.8)
           dischargeRelief = -Math.min(0.5, p * 0.8);
       }
 
-      // NEW: WorkShift Penalty (Losing Steam)
-      // If shift ends in < 60 mins, add heavy penalty
       if (workShifts) {
           const shift = workShifts.find(s => s.doctorId === doc.id);
           if (shift) {
               const shiftEnd = new Date(shift.end).getTime();
               const minsRemaining = (shiftEnd - now) / 60000;
               if (minsRemaining > 0 && minsRemaining < 60) {
-                  capacityPenalty += 50; // Effectively block assignment unless extremely desperate
+                  capacityPenalty += 50; 
               }
           }
       }
 
-      // Acuity Penalty (optional/constant for now, assuming average acuity)
       const acuityPenalty = 0;
 
       const totalScore = load + recencyPenalty + capacityPenalty + dischargeRelief + acuityPenalty;
       return { id: doc.id, name: doc.name, score: totalScore };
     });
 
-    // Sort by lowest score
     scores.sort((a, b) => a.score - b.score);
     
     if (scores.length > 0) {
         setSuggestedDoctor(scores[0]);
-        // Auto-select in form
         handleChange('assignedDoctorId', scores[0].id);
     }
   };
@@ -348,7 +396,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     const clearedBed: Bed = {
       ...formData,
       patient: undefined,
-      status: PatientStatus.EMPTY,
+      status: PatientStatus.CLEANING, 
       comment: '',
       assignedDoctorId: undefined
     };
@@ -359,7 +407,6 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   const addAction = (type: ActionType, name: string) => {
     if (!formData.patient) return;
     
-    // Construct requested timestamp from today's date + selected time
     let requestedAtStr = new Date().toISOString();
     if (newActionTime) {
       const now = new Date();
@@ -526,7 +573,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 ease-out text-slate-200 flex flex-col max-h-[90vh] relative">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 ease-out text-slate-200 flex flex-col max-h-[90vh] relative">
         
         {/* Medication Action Confirmation Overlay */}
         {medActionConfirm && (
@@ -779,63 +826,137 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
                                   <span className="text-[10px] text-emerald-400 bg-emerald-900/20 px-1.5 py-0.5 rounded border border-emerald-900/40">
                                     Siūloma: {suggestedDoctor.name} (Score: {suggestedDoctor.score.toFixed(1)})
                                   </span>
-                               </div>
+                                </div>
                              )}
                           </div>
                         </div>
 
-                        {/* Vitals Grid */}
-                        <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 grid grid-cols-2 gap-3">
-                            <div className="relative">
-                               <label className="text-[10px] text-slate-500 uppercase block mb-1">AKS (mmHg)</label>
-                               <div className="flex items-center gap-1">
-                                 <input 
-                                   type="number" 
-                                   placeholder="120"
-                                   value={formData.patient.vitals?.bpSystolic || ''} 
-                                   onChange={(e) => handleVitalsChange('bpSystolic', e.target.value)}
-                                   className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-sm"
-                                 />
-                                 <span className="text-slate-500">/</span>
-                                 <input 
-                                   type="number" 
-                                   placeholder="80"
-                                   value={formData.patient.vitals?.bpDiastolic || ''} 
-                                   onChange={(e) => handleVitalsChange('bpDiastolic', e.target.value)}
-                                   className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-sm"
-                                 />
-                               </div>
+                        {/* Vitals Grid with NEWS2 */}
+                        <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-3">
+                            {/* Row 1: BP, HR, O2 */}
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="relative">
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1">AKS (mmHg)</label>
+                                   <div className="flex items-center gap-1">
+                                     <input 
+                                       type="number" 
+                                       placeholder="120"
+                                       value={formData.patient.vitals?.bpSystolic || ''} 
+                                       onChange={(e) => handleVitalsChange('bpSystolic', e.target.value)}
+                                       className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-base py-2 font-bold"
+                                     />
+                                     <span className="text-slate-500 text-xl">/</span>
+                                     <input 
+                                       type="number" 
+                                       placeholder="80"
+                                       value={formData.patient.vitals?.bpDiastolic || ''} 
+                                       onChange={(e) => handleVitalsChange('bpDiastolic', e.target.value)}
+                                       className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-base py-2 font-bold"
+                                     />
+                                   </div>
+                                </div>
+                                <div>
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1">ŠSD (bpm)</label>
+                                   <div className="relative">
+                                      <HeartPulse size={12} className="absolute left-2 top-3 text-slate-500" />
+                                      <input 
+                                        type="number" 
+                                        placeholder="75"
+                                        value={formData.patient.vitals?.heartRate || ''} 
+                                        onChange={(e) => handleVitalsChange('heartRate', e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded pl-6 p-1 text-center text-base py-2 font-bold"
+                                      />
+                                   </div>
+                                </div>
+                                <div>
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1">SpO2 (%)</label>
+                                   <div className="relative">
+                                      <Activity size={12} className="absolute left-2 top-3 text-slate-500" />
+                                      <input 
+                                        type="number" 
+                                        placeholder="98"
+                                        value={formData.patient.vitals?.spO2 || ''} 
+                                        onChange={(e) => handleVitalsChange('spO2', e.target.value)}
+                                        className={`w-full bg-slate-800 border border-slate-700 rounded pl-6 p-1 text-center text-base py-2 font-bold ${formData.patient.vitals?.spO2 && formData.patient.vitals.spO2 < 92 ? 'text-red-500 border-red-500 ring-1 ring-red-500' : 'text-slate-200'}`}
+                                      />
+                                   </div>
+                                </div>
                             </div>
-                            <div>
-                               <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1 border-b border-transparent">ŠSD (bpm)</label>
-                               <input 
-                                 type="number" 
-                                 placeholder="75"
-                                 value={formData.patient.vitals?.heartRate || ''} 
-                                 onChange={(e) => handleVitalsChange('heartRate', e.target.value)}
-                                 className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-sm"
-                               />
+
+                            {/* Row 2: Resp, Temp, O2 Support */}
+                            <div className="grid grid-cols-3 gap-3">
+                                <div>
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1">Kvėp. D. (k/min)</label>
+                                   <div className="relative">
+                                      <Wind size={12} className="absolute left-2 top-3 text-slate-500" />
+                                      <input 
+                                        type="number" 
+                                        placeholder="16"
+                                        value={formData.patient.vitals?.respRate || ''} 
+                                        onChange={(e) => handleVitalsChange('respRate', e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded pl-6 p-1 text-center text-base py-2 font-bold"
+                                      />
+                                   </div>
+                                </div>
+                                <div>
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1">Temp (°C)</label>
+                                   <div className="relative">
+                                      <Thermometer size={12} className="absolute left-2 top-3 text-slate-500" />
+                                      <input 
+                                        type="number" 
+                                        placeholder="36.6"
+                                        value={formData.patient.vitals?.temperature || ''} 
+                                        onChange={(e) => handleVitalsChange('temperature', e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded pl-6 p-1 text-center text-base py-2 font-bold"
+                                      />
+                                   </div>
+                                </div>
+                                <div>
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1">Deguonis</label>
+                                   <select 
+                                      value={formData.patient.vitals?.onOxygen ? 'YES' : 'NO'} 
+                                      onChange={(e) => handleVitalsChange('onOxygen', e.target.value === 'YES')}
+                                      className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-sm font-bold h-[42px]"
+                                   >
+                                      <option value="NO">Oras</option>
+                                      <option value="YES">O2</option>
+                                   </select>
+                                </div>
                             </div>
-                            <div>
-                               <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1 border-b border-transparent">SpO2 (%)</label>
-                               <input 
-                                 type="number" 
-                                 placeholder="98"
-                                 value={formData.patient.vitals?.spO2 || ''} 
-                                 onChange={(e) => handleVitalsChange('spO2', e.target.value)}
-                                 className={`w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-sm font-bold ${formData.patient.vitals?.spO2 && formData.patient.vitals.spO2 < 92 ? 'text-red-500 border-red-500' : 'text-slate-200'}`}
-                               />
+
+                            {/* Row 3: Consciousness & NEWS2 Score */}
+                            <div className="grid grid-cols-2 gap-3 items-center">
+                                <div>
+                                   <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1"><Brain size={12}/> Sąmonė</label>
+                                   <select 
+                                      value={formData.patient.vitals?.consciousness || 'Alert'} 
+                                      onChange={(e) => handleVitalsChange('consciousness', e.target.value)}
+                                      className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-sm font-bold h-[42px]"
+                                   >
+                                      <option value="Alert">Sąmoningas (A)</option>
+                                      <option value="CVPU">Sutrikusi (CVPU)</option>
+                                   </select>
+                                </div>
+                                
+                                <div className="bg-slate-900 rounded-lg p-2 border border-slate-800 flex justify-between items-center h-[42px] mt-5">
+                                    <div className="text-[10px] text-slate-500 font-bold uppercase">NEWS2 Balas</div>
+                                    <div className={`text-xl font-bold px-3 rounded ${
+                                        news2.score >= 7 ? 'bg-red-500 text-white' : 
+                                        news2.score >= 5 ? 'bg-orange-500 text-white' : 
+                                        news2.score >= 1 ? 'bg-green-600 text-white' : 'text-slate-400'
+                                    }`}>
+                                        {news2.score}
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                               <label className="text-[10px] text-slate-500 uppercase block mb-1 flex items-center gap-1 border-b border-transparent">Temp (°C)</label>
-                               <input 
-                                 type="number" 
-                                 placeholder="36.6"
-                                 value={formData.patient.vitals?.temperature || ''} 
-                                 onChange={(e) => handleVitalsChange('temperature', e.target.value)}
-                                 className="w-full bg-slate-800 border border-slate-700 rounded p-1 text-center text-sm"
-                               />
-                            </div>
+                            
+                            {news2.score >= 5 && (
+                                <div className={`text-[10px] p-1.5 rounded text-center border font-bold ${
+                                    news2.score >= 7 ? 'bg-red-900/20 text-red-400 border-red-900/50' : 'bg-orange-900/20 text-orange-400 border-orange-900/50'
+                                }`}>
+                                    {news2.score >= 7 ? 'DĖMESIO: Aukšta klinikinė rizika. Skubus gydytojo vertinimas.' : 'Vidutinė klinikinė rizika. Stebėti dinamiką.'}
+                                </div>
+                            )}
                         </div>
 
                       </div>
