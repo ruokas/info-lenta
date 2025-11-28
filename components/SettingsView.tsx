@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Staff, UserProfile, MedicationItem } from '../types';
-import { Trash2, Plus, User, Stethoscope, RefreshCw, RotateCcw, Database, Save, CheckCircle, Edit2, X, Check, AlertTriangle, Pill, Search, Eye, EyeOff, FolderOpen, ChevronDown, ChevronRight, Layers, Filter } from 'lucide-react';
+import { RefreshCw, RotateCcw, Database, Save, CheckCircle, Edit2, X, Check, AlertTriangle, Pill, Search, Eye, EyeOff, ChevronDown, ChevronRight, Layers, Filter, FolderInput, FolderMinus, Trash2 } from 'lucide-react';
 import { isSupabaseConfigured, updateSupabaseConfig, clearSupabaseConfig } from '../lib/supabaseClient';
 
 interface SettingsViewProps {
@@ -18,15 +18,11 @@ interface SettingsViewProps {
 }
 
 const SettingsView: React.FC<SettingsViewProps> = ({
-  doctors, setDoctors,
-  nurses, setNurses,
   medicationBank, setMedications,
   autoRefresh, setAutoRefresh,
   onResetData,
   currentUser
 }) => {
-  const [newDoctorName, setNewDoctorName] = useState('');
-  const [newNurseName, setNewNurseName] = useState('');
   
   // Med Bank State
   const [newMedName, setNewMedName] = useState('');
@@ -34,18 +30,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [newMedRoute, setNewMedRoute] = useState('IV');
   const [newMedCategory, setNewMedCategory] = useState('');
   const [medSearch, setMedSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL'); // NEW: Category filter state
+  const [selectedCategory, setSelectedCategory] = useState('ALL'); // Category filter state
   const [showInactiveMeds, setShowInactiveMeds] = useState(false);
   
   // Med Edit State
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
   const [editMedName, setEditMedName] = useState('');
   const [editMedDose, setEditMedDose] = useState('');
   const [editMedRoute, setEditMedRoute] = useState('');
   const [editMedCategory, setEditMedCategory] = useState('');
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  
+  // Category Management State
+  const [editingCategoryName, setEditingCategoryName] = useState<string | null>(null);
+  const [tempCategoryName, setTempCategoryName] = useState('');
   
   // Supabase Config State
   const [sbUrl, setSbUrl] = useState(localStorage.getItem('sb_url') || '');
@@ -56,34 +55,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
   const isAdmin = currentUser.role === 'Admin';
-
-  const handleAddDoctor = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDoctorName.trim()) return;
-    
-    const newDoc: Staff = {
-      id: `d-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: newDoctorName.trim(),
-      role: 'Doctor'
-    };
-    
-    setDoctors([...doctors, newDoc]);
-    setNewDoctorName('');
-  };
-
-  const handleAddNurse = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNurseName.trim()) return;
-    
-    const newNurse: Staff = {
-      id: `n-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: newNurseName.trim(),
-      role: 'Nurse'
-    };
-    
-    setNurses([...nurses, newNurse]);
-    setNewNurseName('');
-  };
 
   const handleAddMedication = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,14 +84,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     setDeletingId(null);
   };
 
-  const executeDelete = (id: string, type: 'Doctor' | 'Nurse' | 'Med') => {
-    if (type === 'Doctor') {
-        setDoctors(doctors.filter(d => d.id !== id));
-    } else if (type === 'Nurse') {
-        setNurses(nurses.filter(n => n.id !== id));
-    } else if (type === 'Med') {
-        setMedications(medicationBank.filter(m => m.id !== id));
-    }
+  const executeDelete = (id: string) => {
+    setMedications(medicationBank.filter(m => m.id !== id));
     setDeletingId(null);
   };
 
@@ -133,31 +98,64 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     }));
   };
 
-  const startEditing = (item: any, type: 'Staff' | 'Med') => {
+  const startEditing = (item: any) => {
     setDeletingId(null);
     setEditingId(item.id);
-    if (type === 'Staff') {
-        setEditName(item.name);
-    } else {
-        setEditMedName(item.name);
-        setEditMedDose(item.dose);
-        setEditMedRoute(item.route);
-        setEditMedCategory(item.category || '');
-    }
+    setEditMedName(item.name);
+    setEditMedDose(item.dose);
+    setEditMedRoute(item.route);
+    setEditMedCategory(item.category || '');
   };
 
-  const saveEdit = (id: string, type: 'Doctor' | 'Nurse' | 'Med') => {
-    if (type === 'Doctor') {
-        if (!editName.trim()) return;
-        setDoctors(doctors.map(d => d.id === id ? { ...d, name: editName.trim() } : d));
-    } else if (type === 'Nurse') {
-        if (!editName.trim()) return;
-        setNurses(nurses.map(n => n.id === id ? { ...n, name: editName.trim() } : n));
-    } else if (type === 'Med') {
-        if (!editMedName.trim()) return;
-        setMedications(medicationBank.map(m => m.id === id ? { ...m, name: editMedName.trim(), dose: editMedDose.trim(), route: editMedRoute, category: editMedCategory.trim() || 'Kiti' } : m));
-    }
+  const saveEdit = (id: string) => {
+    if (!editMedName.trim()) return;
+    setMedications(medicationBank.map(m => m.id === id ? { ...m, name: editMedName.trim(), dose: editMedDose.trim(), route: editMedRoute, category: editMedCategory.trim() || 'Kiti' } : m));
     setEditingId(null);
+  };
+
+  // --- Category Management Logic ---
+  
+  const startEditingCategory = (categoryName: string) => {
+    setEditingCategoryName(categoryName);
+    setTempCategoryName(categoryName);
+  };
+
+  const saveCategoryRename = () => {
+    if (!editingCategoryName || !tempCategoryName.trim()) return;
+    
+    const oldName = editingCategoryName;
+    const newName = tempCategoryName.trim();
+
+    if (oldName === newName) {
+      setEditingCategoryName(null);
+      return;
+    }
+
+    // Bulk update all medications in this category
+    const updatedMeds = medicationBank.map(med => {
+      if (med.category === oldName) {
+        return { ...med, category: newName };
+      }
+      return med;
+    });
+
+    setMedications(updatedMeds);
+    setEditingCategoryName(null);
+    setTempCategoryName('');
+  };
+
+  const deleteCategory = (categoryName: string) => {
+    if (!window.confirm(`Ar tikrai norite panaikinti kategoriją "${categoryName}"? Visi šios kategorijos vaistai bus perkelti į "Kiti".`)) return;
+
+    // Bulk update: move items to 'Kiti'
+    const updatedMeds = medicationBank.map(med => {
+      if (med.category === categoryName) {
+        return { ...med, category: 'Kiti' };
+      }
+      return med;
+    });
+
+    setMedications(updatedMeds);
   };
 
   const handleSaveSupabase = () => {
@@ -334,20 +332,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                 </div>
             </div>
-            {/* Mobile Category Select */}
-            <div className="relative md:hidden w-full">
-               <select 
-                 value={selectedCategory}
-                 onChange={(e) => setSelectedCategory(e.target.value)}
-                 className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:border-blue-500 appearance-none cursor-pointer"
-               >
-                 <option value="ALL">Visos kategorijos</option>
-                 {existingCategories.map(cat => (
-                   <option key={cat} value={cat}>{cat}</option>
-                 ))}
-               </select>
-               <Filter size={16} className="absolute right-3 top-3 text-slate-500 pointer-events-none" />
-            </div>
          </div>
 
          {isAdmin && (
@@ -410,7 +394,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                         disabled={!newMedName.trim()}
                         className="bg-yellow-600 hover:bg-yellow-700 text-white p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed mb-0.5 w-full md:w-auto flex justify-center"
                     >
-                        <Plus size={20} />
+                        <CheckCircle size={20} />
                     </button>
                 </div>
             </div>
@@ -420,22 +404,60 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             {sortedCategories.map(category => {
                 // Auto-expand if searching or if category selected, otherwise use state
                 const isExpanded = expandedCategories.includes(category) || medSearch.trim() !== '' || selectedCategory !== 'ALL';
+                const isEditingCategory = editingCategoryName === category;
                 
                 return (
                 <div key={category} className="border border-slate-800 rounded-lg overflow-hidden">
-                    <button 
-                        onClick={() => toggleCategory(category)}
-                        className="w-full flex items-center justify-between p-3 bg-slate-800/80 hover:bg-slate-800 transition text-left"
+                    <div 
+                        className="w-full flex items-center justify-between p-3 bg-slate-800/80 hover:bg-slate-800 transition"
                     >
-                        <div className="flex items-center gap-2 font-semibold text-slate-300">
+                        {isEditingCategory ? (
+                          <div className="flex-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                             <FolderInput size={18} className="text-blue-500" />
+                             <input 
+                               value={tempCategoryName}
+                               onChange={(e) => setTempCategoryName(e.target.value)}
+                               className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-sm outline-none text-white w-48"
+                               autoFocus
+                               placeholder="Naujas pavadinimas"
+                             />
+                             <button onClick={saveCategoryRename} className="p-1 bg-green-600/20 text-green-500 rounded hover:bg-green-600 hover:text-white"><Check size={14}/></button>
+                             <button onClick={() => setEditingCategoryName(null)} className="p-1 bg-red-600/20 text-red-500 rounded hover:bg-red-600 hover:text-white"><X size={14}/></button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => toggleCategory(category)}
+                            className="flex-1 flex items-center gap-2 font-semibold text-slate-300 text-left"
+                          >
                              {isExpanded ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
                              <Layers size={16} className="text-slate-500"/>
                              {category}
                              <span className="text-xs font-normal text-slate-500 ml-2 bg-slate-900 px-2 py-0.5 rounded-full">
                                 {groupedMeds[category].length}
                              </span>
-                        </div>
-                    </button>
+                          </button>
+                        )}
+
+                        {/* Category Actions (Admin Only) */}
+                        {isAdmin && !isEditingCategory && category !== 'Kiti' && (
+                           <div className="flex items-center gap-1 ml-2">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); startEditingCategory(category); }}
+                                className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700 rounded transition"
+                                title="Pervadinti kategoriją"
+                              >
+                                <FolderInput size={14} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); deleteCategory(category); }}
+                                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded transition"
+                                title="Ištrinti kategoriją (Vaistai bus perkelti į 'Kiti')"
+                              >
+                                <FolderMinus size={14} />
+                              </button>
+                           </div>
+                        )}
+                    </div>
 
                     {/* Expandable Content */}
                     {isExpanded && (
@@ -477,7 +499,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                             <option value="Topical">Top</option>
                                             <option value="PR">PR</option>
                                         </select>
-                                        <button type="button" onClick={() => saveEdit(med.id, 'Med')} className="text-green-500 p-1 hover:bg-slate-700 rounded"><Check size={16}/></button>
+                                        <button type="button" onClick={() => saveEdit(med.id)} className="text-green-500 p-1 hover:bg-slate-700 rounded"><Check size={16}/></button>
                                         <button type="button" onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={16}/></button>
                                     </div>
                                     ) : deletingId === med.id ? (
@@ -486,7 +508,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                         <div className="flex gap-2">
                                             <button 
                                             type="button"
-                                            onClick={() => executeDelete(med.id, 'Med')}
+                                            onClick={() => executeDelete(med.id)}
                                             className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-lg shadow-red-900/20"
                                             >
                                             TAIP
@@ -521,7 +543,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                                 </button>
                                                 <button 
                                                     type="button"
-                                                    onClick={(e) => { e.stopPropagation(); startEditing(med, 'Med'); }}
+                                                    onClick={(e) => { e.stopPropagation(); startEditing(med); }}
                                                     className="text-slate-400 hover:text-blue-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"
                                                     title="Redaguoti"
                                                 >
@@ -548,193 +570,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             })}
              {filteredMeds.length === 0 && <p className="text-slate-500 italic text-sm text-center py-2">Nerasta vaistų.</p>}
           </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Doctors Section */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-4 text-slate-100 text-lg font-semibold border-b border-slate-800 pb-2">
-            <Stethoscope className="text-blue-500" size={20} />
-            <h3>Gydytojų sąrašas</h3>
-          </div>
-          
-          {isAdmin && (
-            <div className="flex gap-2 mb-4">
-                <input
-                type="text"
-                value={newDoctorName}
-                onChange={(e) => setNewDoctorName(e.target.value)}
-                placeholder="Gyd. Vardas Pavardė"
-                className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <button 
-                type="button"
-                onClick={(e) => handleAddDoctor(e)}
-                disabled={!newDoctorName.trim()}
-                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                <Plus size={20} />
-                </button>
-            </div>
-          )}
-
-          <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-2">
-            {doctors.map(doc => (
-              <div key={doc.id} className={`flex justify-between items-center bg-slate-800/50 p-3 rounded-lg border transition group ${deletingId === doc.id ? 'border-red-500/50 bg-red-900/10' : 'border-slate-700/50 hover:bg-slate-800'}`}>
-                {editingId === doc.id ? (
-                   <div className="flex-1 flex gap-2">
-                      <input 
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="flex-1 bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none"
-                        autoFocus
-                      />
-                      <button type="button" onClick={() => saveEdit(doc.id, 'Doctor')} className="text-green-500 p-1 hover:bg-slate-700 rounded"><Check size={16}/></button>
-                      <button type="button" onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={16}/></button>
-                   </div>
-                ) : deletingId === doc.id ? (
-                   <div className="flex-1 flex items-center justify-between animate-in fade-in zoom-in-95 duration-200">
-                      <span className="text-red-200 font-medium text-sm flex items-center gap-2"><AlertTriangle size={14}/> Ištrinti?</span>
-                      <div className="flex gap-2">
-                        <button 
-                          type="button"
-                          onClick={() => executeDelete(doc.id, 'Doctor')}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-lg shadow-red-900/20"
-                        >
-                          TAIP
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={cancelDelete}
-                          className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded"
-                        >
-                          NE
-                        </button>
-                      </div>
-                   </div>
-                ) : (
-                   <>
-                    <span className="text-slate-300">{doc.name}</span>
-                    {isAdmin && (
-                        <div className="flex gap-1">
-                            <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); startEditing(doc, 'Staff'); }}
-                            className="text-slate-400 hover:text-blue-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"
-                            title="Redaguoti"
-                            >
-                            <Edit2 size={14} />
-                            </button>
-                            <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); initDelete(doc.id); }}
-                            className="text-slate-500 hover:text-red-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"
-                            title="Ištrinti"
-                            >
-                            <Trash2 size={14} />
-                            </button>
-                        </div>
-                    )}
-                   </>
-                )}
-              </div>
-            ))}
-            {doctors.length === 0 && <p className="text-slate-500 italic text-sm text-center py-2">Sąrašas tuščias</p>}
-          </div>
-        </div>
-
-        {/* Nurses Section */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-4 text-slate-100 text-lg font-semibold border-b border-slate-800 pb-2">
-            <User className="text-green-500" size={20} />
-            <h3>Slaugytojų sąrašas</h3>
-          </div>
-
-           {isAdmin && (
-            <div className="flex gap-2 mb-4">
-                <input
-                type="text"
-                value={newNurseName}
-                onChange={(e) => setNewNurseName(e.target.value)}
-                placeholder="Slaug. Vardas"
-                className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                />
-                <button 
-                type="button"
-                onClick={(e) => handleAddNurse(e)}
-                disabled={!newNurseName.trim()}
-                className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                <Plus size={20} />
-                </button>
-            </div>
-           )}
-
-          <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-2">
-            {nurses.map(nurse => (
-              <div key={nurse.id} className={`flex justify-between items-center bg-slate-800/50 p-3 rounded-lg border transition group ${deletingId === nurse.id ? 'border-red-500/50 bg-red-900/10' : 'border-slate-700/50 hover:bg-slate-800'}`}>
-                {editingId === nurse.id ? (
-                   <div className="flex-1 flex gap-2">
-                      <input 
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="flex-1 bg-slate-950 border border-green-500 rounded px-2 py-1 text-sm outline-none"
-                        autoFocus
-                      />
-                      <button type="button" onClick={() => saveEdit(nurse.id, 'Nurse')} className="text-green-500 p-1 hover:bg-slate-700 rounded"><Check size={16}/></button>
-                      <button type="button" onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={16}/></button>
-                   </div>
-                ) : deletingId === nurse.id ? (
-                   <div className="flex-1 flex items-center justify-between animate-in fade-in zoom-in-95 duration-200">
-                      <span className="text-red-200 font-medium text-sm flex items-center gap-2"><AlertTriangle size={14}/> Ištrinti?</span>
-                      <div className="flex gap-2">
-                        <button 
-                          type="button"
-                          onClick={() => executeDelete(nurse.id, 'Nurse')}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-lg shadow-red-900/20"
-                        >
-                          TAIP
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={cancelDelete}
-                          className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded"
-                        >
-                          NE
-                        </button>
-                      </div>
-                   </div>
-                ) : (
-                   <>
-                    <span className="text-slate-300">{nurse.name}</span>
-                    {isAdmin && (
-                        <div className="flex gap-1">
-                            <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); startEditing(nurse, 'Staff'); }}
-                            className="text-slate-400 hover:text-blue-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"
-                            title="Redaguoti"
-                            >
-                            <Edit2 size={14} />
-                            </button>
-                            <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); initDelete(nurse.id); }}
-                            className="text-slate-500 hover:text-red-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"
-                            title="Ištrinti"
-                            >
-                            <Trash2 size={14} />
-                            </button>
-                        </div>
-                    )}
-                   </>
-                )}
-              </div>
-            ))}
-             {nurses.length === 0 && <p className="text-slate-500 italic text-sm text-center py-2">Sąrašas tuščias</p>}
-          </div>
-        </div>
       </div>
 
       {/* General Settings */}

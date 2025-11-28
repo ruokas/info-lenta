@@ -1,23 +1,24 @@
-
 import React, { useState } from 'react';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { STATUS_COLORS, TRIAGE_COLORS } from '../constants';
-import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X } from 'lucide-react';
+import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X, ChevronDown } from 'lucide-react';
 
 interface BedTableViewProps {
   beds: Bed[];
   doctors: Staff[];
   onRowClick: (bed: Bed) => void;
   onDischarge: (bed: Bed) => void;
+  onStatusChange: (bed: Bed, newStatus: PatientStatus) => void;
 }
 
-const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, onDischarge }) => {
+const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, onDischarge, onStatusChange }) => {
   const [confirmDischargeId, setConfirmDischargeId] = useState<string | null>(null);
 
   // Group beds by section (Nurse Name)
   const groupedBeds = React.useMemo(() => {
     const groups: Record<string, Bed[]> = {};
     beds.forEach(bed => {
+      if (!bed) return; // Skip null beds
       if (!groups[bed.section]) {
         groups[bed.section] = [];
       }
@@ -166,12 +167,27 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, onRowClick, 
                       {bed.patient ? bed.patient.name : 'Laisva'}
                     </td>
 
-                    <td onClick={() => onRowClick(bed)} className="px-2 py-1 border-r border-slate-800 cursor-pointer">
-                       {bed.status !== PatientStatus.EMPTY && (
-                         <div className={`px-2 py-1 rounded text-xs font-semibold border flex items-center justify-between shadow-sm ${STATUS_COLORS[bed.status]}`}>
-                            <span className="truncate">{bed.status}</span>
-                            {getStatusIcon(bed.status)}
+                    {/* Status Cell - Modified to be a dropdown if occupied */}
+                    <td onClick={(e) => bed.status !== PatientStatus.EMPTY && e.stopPropagation()} className={`px-2 py-1 border-r border-slate-800 ${bed.status === PatientStatus.EMPTY ? 'cursor-pointer' : ''}`} onClickCapture={bed.status === PatientStatus.EMPTY ? () => onRowClick(bed) : undefined}>
+                       {bed.status !== PatientStatus.EMPTY ? (
+                         <div className={`relative px-2 py-1 rounded text-xs font-semibold border shadow-sm ${STATUS_COLORS[bed.status]} group/status hover:opacity-90`}>
+                            <select
+                                value={bed.status}
+                                onChange={(e) => onStatusChange(bed, e.target.value as PatientStatus)}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
+                            >
+                                {Object.values(PatientStatus).map(status => (
+                                    <option key={status} value={status} className="bg-slate-800 text-slate-200">{status}</option>
+                                ))}
+                            </select>
+                            <div className="flex items-center justify-between pointer-events-none">
+                                <span className="truncate mr-1">{bed.status}</span>
+                                {getStatusIcon(bed.status)}
+                                <ChevronDown size={10} className="ml-1 opacity-50" />
+                            </div>
                          </div>
+                       ) : (
+                         <div onClick={() => onRowClick(bed)}></div>
                        )}
                     </td>
 

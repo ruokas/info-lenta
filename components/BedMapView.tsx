@@ -87,6 +87,8 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
     <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 h-full overflow-y-auto custom-scrollbar">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         {beds.map((bed) => {
+          if (!bed) return null; // Guard against null beds
+
           const isEmpty = bed.status === PatientStatus.EMPTY;
           const isDragTarget = dragOverBedId === bed.id;
           const isAnimating = animatingBeds.includes(bed.id);
@@ -180,7 +182,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, onBedClick, onMo
               {!isEmpty && (
                 <div className="mt-auto">
                     {/* Status Bar */}
-                   <div className={`px-2 py-1 text-xs font-semibold truncate ${STATUS_COLORS[bed.status]} border-l-0 border-r-0 border-b-0`}>
+                   <div className={`px-2 py-1 text-xs font-semibold truncate ${STATUS_COLORS[bed.status]} border-l-0 border-r-0 border-b-0 border-t`}>
                      {bed.status}
                    </div>
                    {/* Doctor & Info Bar */}

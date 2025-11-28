@@ -68,10 +68,21 @@ export interface Vitals {
   lastUpdated: string;
 }
 
+// NEW: Work Shift Structure
+export interface WorkShift {
+  id: string;
+  doctorId: string;
+  start: string; // ISO timestamp
+  end: string;   // ISO timestamp
+  type: 'DAY' | 'NIGHT' | 'CUSTOM';
+}
+
 export interface Staff {
   id: string;
   name: string;
   role: 'Doctor' | 'Nurse' | 'Assistant' | 'Admin';
+  isActive?: boolean; // Controlled by the system based on WorkShift
+  currentShiftId?: string; // Link to active shift
 }
 
 export interface UserProfile extends Staff {
@@ -123,6 +134,15 @@ export interface PatientLogEntry {
   allergies?: string;
   medications?: MedicationOrder[]; // Full objects to show history
   actions?: ClinicalAction[]; // Full objects to show history
+}
+
+// NEW: Assignment Log for tracking workload
+export interface AssignmentLog {
+  id: string;
+  doctorId: string;
+  patientName: string;
+  triageCategory: TriageCategory;
+  assignedAt: string; // ISO timestamp
 }
 
 export interface AppNotification {

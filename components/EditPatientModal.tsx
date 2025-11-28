@@ -1,17 +1,19 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem } from '../types';
+import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem, WorkShift } from '../types';
 import { MEDICATION_PROTOCOLS } from '../constants';
-import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse } from 'lucide-react';
+import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles } from 'lucide-react';
 
 interface EditPatientModalProps {
   bed: Bed;
+  beds: Bed[]; // Access to all beds for ARPA Calculation
   doctors: Staff[];
   currentUser: UserProfile; 
   medicationBank: MedicationItem[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedBed: Bed) => void;
+  workShifts?: WorkShift[]; // Optional for backward compatibility, but needed for new ARPA
 }
 
 // Common abbreviations and brand names mapping to active ingredients
@@ -54,7 +56,7 @@ const DRUG_SYNONYMS: Record<string, string[]> = {
   'Bisoprololum': ['Biso'],
 };
 
-const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, currentUser, medicationBank, isOpen, onClose, onSave }) => {
+const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors, currentUser, medicationBank, isOpen, onClose, onSave, workShifts }) => {
   const [formData, setFormData] = useState<Bed>(bed);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
@@ -75,6 +77,14 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
   const [newActionType, setNewActionType] = useState<ActionType>('LABS');
   const [newActionName, setNewActionName] = useState('');
   const [newActionTime, setNewActionTime] = useState('');
+
+  // ARPA Suggestion State
+  const [suggestedDoctor, setSuggestedDoctor] = useState<{id: string, name: string, score: number} | null>(null);
+
+  // Filter Active Doctors only for dropdown
+  const activeDoctors = useMemo(() => {
+    return doctors.filter(d => d.role === 'Doctor' && d.isActive !== false);
+  }, [doctors]);
 
   // Priority list for Quick Picks
   const quickPickMeds = useMemo(() => {
@@ -170,6 +180,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
     setEnableReminder(false);
     setReminderHours(1);
     setShowSuggestions(false);
+    setSuggestedDoctor(null);
     
     // Set default action time to now
     const now = new Date();
@@ -217,18 +228,103 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
     
     setFormData(prev => ({
       ...prev,
-      status: PatientStatus.ADMITTING,
+      status: PatientStatus.WAITING_EXAM, // Changed from ADMITTING to WAITING_EXAM
       patient: {
         id: Date.now().toString(),
         name: '',
         symptoms: '',
-        triageCategory: TriageCategory.URGENT,
+        triageCategory: 0 as TriageCategory, // Default to 0 (Unassigned)
         arrivalTime: timeString,
         medications: [],
         actions: [],
         vitals: { lastUpdated: new Date().toISOString() }
       }
     }));
+  };
+
+  // --- ARPA 2.0 Algorithm ---
+  const calculateArpaSuggestions = () => {
+    const now = new Date().getTime();
+
+    const scores = activeDoctors.map(doc => {
+      const docBeds = beds.filter(b => b.assignedDoctorId === doc.id && b.status !== PatientStatus.EMPTY && b.patient);
+      
+      let load = 0;
+      let dischargeCount = 0;
+      let latestArrival = 0; // timestamp
+
+      docBeds.forEach(b => {
+        const p = b.patient!;
+        // ESI Weight: I=5, II=4, III=3, IV=2, V=1
+        // TriageCategory enum is 1..5. So (6 - 1) = 5, (6 - 5) = 1.
+        const wEsi = (6 - p.triageCategory); 
+        
+        // Status Weight: DISCHARGE=0.6, Others=1.0
+        const wStatus = b.status === PatientStatus.DISCHARGE ? 0.6 : 1.0;
+        if (b.status === PatientStatus.DISCHARGE) dischargeCount++;
+
+        // Age Bump: min(minutesSinceArrival/60, 2) * 0.15
+        const [h, m] = p.arrivalTime.split(':').map(Number);
+        const arrivalDate = new Date();
+        arrivalDate.setHours(h, m, 0, 0);
+        let diff = new Date().getTime() - arrivalDate.getTime();
+        if (diff < 0) diff += 24 * 60 * 60 * 1000; // handle midnight crossing
+        const minutesSince = diff / 60000;
+        const ageBump = Math.min(minutesSince / 60, 2) * 0.15;
+
+        load += wEsi * wStatus * (1 + ageBump);
+
+        if (arrivalDate.getTime() > latestArrival) latestArrival = arrivalDate.getTime();
+      });
+
+      // Recency Penalty: If < 20 min since last patient arrival
+      let recencyPenalty = 0;
+      if (latestArrival > 0) {
+        const minutesSinceLast = (new Date().getTime() - latestArrival) / 60000;
+        // Configurable step curve: +1.5 if < 20 mins
+        if (minutesSinceLast < 20) recencyPenalty = 1.5; 
+      }
+
+      // Capacity Penalty: If >= 5 active patients
+      const maxSimul = 5;
+      let capacityPenalty = docBeds.length >= maxSimul ? 3.0 : 0;
+
+      // Discharge Relief
+      let dischargeRelief = 0;
+      if (docBeds.length >= 2 && dischargeCount > 0) {
+          const p = dischargeCount / docBeds.length;
+          // min(0.5, p * 0.8)
+          dischargeRelief = -Math.min(0.5, p * 0.8);
+      }
+
+      // NEW: WorkShift Penalty (Losing Steam)
+      // If shift ends in < 60 mins, add heavy penalty
+      if (workShifts) {
+          const shift = workShifts.find(s => s.doctorId === doc.id);
+          if (shift) {
+              const shiftEnd = new Date(shift.end).getTime();
+              const minsRemaining = (shiftEnd - now) / 60000;
+              if (minsRemaining > 0 && minsRemaining < 60) {
+                  capacityPenalty += 50; // Effectively block assignment unless extremely desperate
+              }
+          }
+      }
+
+      // Acuity Penalty (optional/constant for now, assuming average acuity)
+      const acuityPenalty = 0;
+
+      const totalScore = load + recencyPenalty + capacityPenalty + dischargeRelief + acuityPenalty;
+      return { id: doc.id, name: doc.name, score: totalScore };
+    });
+
+    // Sort by lowest score
+    scores.sort((a, b) => a.score - b.score);
+    
+    if (scores.length > 0) {
+        setSuggestedDoctor(scores[0]);
+        // Auto-select in form
+        handleChange('assignedDoctorId', scores[0].id);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -465,6 +561,35 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
           </div>
         )}
 
+        {/* Unsaved Changes Confirmation Overlay */}
+        {isDiscardConfirmOpen && (
+          <div className="absolute inset-x-0 bottom-0 z-50 bg-slate-900 border-t border-slate-700 p-4 shadow-2xl animate-in slide-in-from-bottom-full duration-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+               <AlertCircle className="text-yellow-500" size={24} />
+               <div>
+                  <h4 className="font-bold text-slate-200">Neišsaugoti pakeitimai</h4>
+                  <p className="text-xs text-slate-400">Turite neišsaugotų duomenų. Ar tikrai norite uždaryti?</p>
+               </div>
+            </div>
+            <div className="flex gap-3">
+               <button 
+                 type="button"
+                 onClick={() => setIsDiscardConfirmOpen(false)}
+                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-medium transition"
+               >
+                 Tęsti redagavimą
+               </button>
+               <button 
+                 type="button"
+                 onClick={onClose}
+                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold transition shadow-lg shadow-red-900/20"
+               >
+                 Uždaryti
+               </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-slate-950 text-white p-4 flex justify-between items-center border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
@@ -557,6 +682,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                 onChange={(e) => handlePatientChange('triageCategory', parseInt(e.target.value))}
                                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
                               >
+                                <option value={0}>-- Pasirinkti --</option>
                                 <option value={1}>1 - Reanimacinė</option>
                                 <option value={2}>2 - Skubi (Raudona)</option>
                                 <option value={3}>3 - Skubi (Geltona)</option>
@@ -619,7 +745,18 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                           </div>
                           
                            <div className="col-span-2">
-                             <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Paskirtas gydytojas</label>
+                             <div className="flex justify-between items-center mb-1">
+                                <label className="block text-xs font-medium text-slate-500 uppercase">Paskirtas gydytojas</label>
+                                <button 
+                                  type="button" 
+                                  onClick={calculateArpaSuggestions}
+                                  className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition"
+                                  title="Siūlyti gydytoją pagal apkrovą (ARPA 2.0)"
+                                >
+                                  <Sparkles size={12} />
+                                  Siūlyti (ARPA)
+                                </button>
+                             </div>
                              <div className="relative">
                                 <Stethoscope className="absolute left-3 top-2.5 text-slate-400" size={16} />
                                 <select
@@ -628,11 +765,18 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                   className="w-full pl-9 bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
                                 >
                                   <option value="">-- Pasirinkti gydytoją --</option>
-                                  {doctors.map(doc => (
+                                  {activeDoctors.map(doc => (
                                     <option key={doc.id} value={doc.id}>{doc.name}</option>
                                   ))}
                                 </select>
                              </div>
+                             {suggestedDoctor && (
+                               <div className="mt-1 flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                  <span className="text-[10px] text-emerald-400 bg-emerald-900/20 px-1.5 py-0.5 rounded border border-emerald-900/40">
+                                    Siūloma: {suggestedDoctor.name} (Score: {suggestedDoctor.score.toFixed(1)})
+                                  </span>
+                               </div>
+                             )}
                           </div>
                         </div>
 
@@ -1005,25 +1149,16 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                                    </>
                                  )}
                                  
-                                 {/* Doctor Actions */}
-                                 {!isNurse && (
-                                    <button
+                                 {/* Repeat Button (Doctors Only) */}
+                                 {!isNurse && med.status !== MedicationStatus.CANCELLED && (
+                                     <button
                                         type="button"
                                         onClick={() => repeatMedication(med)}
-                                        className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded transition"
-                                        title="Pakartoti paskyrimą"
-                                    >
+                                        className="p-1.5 text-blue-400 hover:bg-blue-900/20 rounded transition"
+                                        title="Kartoti vaistą"
+                                     >
                                         <RotateCcw size={16} />
-                                    </button>
-                                 )}
-
-                                 {med.status === MedicationStatus.GIVEN && (
-                                    <span className="flex items-center gap-1 text-green-500 text-xs font-bold px-2 py-1 bg-green-900/20 rounded border border-green-900/30">
-                                      <CheckCircle size={12} /> SULEISTA
-                                    </span>
-                                 )}
-                                 {med.status === MedicationStatus.CANCELLED && (
-                                    <span className="text-xs text-slate-500 font-medium">Atšaukta</span>
+                                     </button>
                                  )}
                               </div>
                            </div>
@@ -1032,86 +1167,54 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, doctors, curre
                     </div>
                   </div>
                 )}
+
+                {/* Footer Buttons */}
+                <div className="flex justify-between items-center pt-4 border-t border-slate-800">
+                  {formData.patient ? (
+                    isDeleteConfirmOpen ? (
+                       <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                          <span className="text-sm font-bold text-red-400">Ar tikrai atlaisvinti lovą?</span>
+                          <button
+                            type="button"
+                            onClick={handleConfirmClear}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow-lg shadow-red-900/30 transition"
+                          >
+                            TAIP
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsDeleteConfirmOpen(false)}
+                            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium transition"
+                          >
+                            NE
+                          </button>
+                       </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteConfirmOpen(true)}
+                        className="flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 px-3 py-2 rounded-lg transition"
+                      >
+                        <Trash2 size={18} />
+                        Atlaisvinti lovą
+                      </button>
+                    )
+                  ) : (
+                    <div></div>
+                  )}
+                  
+                  <button
+                    type="submit"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-blue-900/20 transition transform active:scale-95"
+                  >
+                    <CheckCircle size={18} />
+                    Išsaugoti
+                  </button>
+                </div>
+
              </form>
           )}
         </div>
-
-        {/* Footer Actions */}
-        {formData.patient && (
-          <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
-             <div className="flex gap-3 items-center">
-                {isDiscardConfirmOpen ? (
-                  <div className="flex-1 flex items-center justify-end gap-2 bg-yellow-900/20 border border-yellow-900/50 rounded-lg px-3 py-1.5 animate-in slide-in-from-bottom-1 duration-200 ease-out">
-                    <AlertTriangle size={16} className="text-yellow-500 ml-1" />
-                    <span className="text-xs text-yellow-200 font-semibold px-1">Turite neišsaugotų pakeitimų.</span>
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold rounded transition"
-                    >
-                      Uždaryti neįšsaugojus
-                    </button>
-                    <button
-                       type="button"
-                       onClick={() => setIsDiscardConfirmOpen(false)}
-                       className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded transition"
-                    >
-                      Grįžti
-                    </button>
-                  </div>
-                ) : !isDeleteConfirmOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      className="px-4 py-2 text-red-400 hover:bg-red-900/20 border border-red-900/50 rounded-lg font-medium transition flex items-center gap-2"
-                    >
-                      <Trash2 size={16} />
-                      Atlaisvinti lovą
-                    </button>
-                    <div className="flex-1"></div>
-                    <button
-                      type="button"
-                      onClick={handleCloseAttempt}
-                      className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-lg font-medium transition"
-                    >
-                      Atšaukti
-                    </button>
-                    <button
-                      type="button" 
-                      onClick={(e) => handleSubmit(e as any)}
-                      className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-md shadow-blue-900/50 transition"
-                    >
-                      Išsaugoti
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-2 bg-red-900/20 border border-red-900/50 rounded-lg px-2 py-1.5 animate-in slide-in-from-bottom-1 duration-200 ease-out w-full justify-between">
-                    <div className="flex items-center gap-2">
-                        <AlertTriangle size={16} className="text-red-500 ml-1" />
-                        <span className="text-xs text-red-200 font-semibold px-1">Ar tikrai ištrinti?</span>
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleConfirmClear}
-                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded transition"
-                        >
-                          TAIP
-                        </button>
-                        <button
-                           type="button"
-                           onClick={() => setIsDeleteConfirmOpen(false)}
-                           className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded transition"
-                        >
-                          NE
-                        </button>
-                    </div>
-                  </div>
-                )}
-             </div>
-          </div>
-        )}
       </div>
     </div>
   );

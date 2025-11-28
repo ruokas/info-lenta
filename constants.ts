@@ -290,16 +290,17 @@ export const INITIAL_BEDS: Bed[] = [
 ];
 
 export const STATUS_COLORS: Record<PatientStatus, string> = {
-  [PatientStatus.EMPTY]: 'bg-slate-800 text-slate-500',
-  [PatientStatus.WAITING_EXAM]: 'bg-red-900/40 text-red-200 border-red-800/50',
-  [PatientStatus.ADMITTING]: 'bg-red-700 text-white border-red-600',
-  [PatientStatus.DISCHARGE]: 'bg-green-700 text-white border-green-600',
-  [PatientStatus.IV_DRIP]: 'bg-blue-900/40 text-blue-200 border-blue-800/50',
-  [PatientStatus.WAITING_TESTS]: 'bg-yellow-900/40 text-yellow-200 border-yellow-800/50',
-  [PatientStatus.OBSERVATION]: 'bg-purple-900/40 text-purple-200 border-purple-800/50',
+  [PatientStatus.EMPTY]: 'bg-slate-900/50 text-slate-700 border-slate-800',
+  [PatientStatus.WAITING_EXAM]: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  [PatientStatus.ADMITTING]: 'bg-rose-600 text-white border-rose-600 shadow-md shadow-rose-900/20',
+  [PatientStatus.DISCHARGE]: 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-900/20',
+  [PatientStatus.IV_DRIP]: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+  [PatientStatus.WAITING_TESTS]: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  [PatientStatus.OBSERVATION]: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
 };
 
 export const TRIAGE_COLORS: Record<number, string> = {
+  0: 'bg-slate-800 text-slate-500 border border-slate-700', // Unassigned
   1: 'bg-blue-600 text-white',      // 1 - Mėlyna
   2: 'bg-red-600 text-white',       // 2 - Raudona
   3: 'bg-yellow-500 text-slate-900',// 3 - Geltona

@@ -1,13 +1,15 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2 } from 'lucide-react';
+import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2, Briefcase } from 'lucide-react';
 import BedTableView from './components/BedTableView';
 import BedMapView from './components/BedMapView';
 import EditPatientModal from './components/EditPatientModal';
 import SettingsView from './components/SettingsView';
 import PatientLogView from './components/PatientLogView';
+import ShiftManagerView from './components/ShiftManagerView'; // NEW
 import LoginView from './components/LoginView';
 import { DataService } from './services/DataService';
-import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem } from './types';
+import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem, AssignmentLog, WorkShift } from './types';
 import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS } from './constants';
 
 const App: React.FC = () => {
@@ -16,6 +18,8 @@ const App: React.FC = () => {
   const [medicationBank, setMedicationBank] = useState<MedicationItem[]>(INITIAL_MEDICATIONS);
   const [beds, setBeds] = useState<Bed[]>(INITIAL_BEDS);
   const [patientLog, setPatientLog] = useState<PatientLogEntry[]>([]);
+  const [assignmentLogs, setAssignmentLogs] = useState<AssignmentLog[]>([]);
+  const [workShifts, setWorkShifts] = useState<WorkShift[]>([]); // NEW
   
   const [autoRefresh, setAutoRefresh] = useState(() => {
     const saved = localStorage.getItem('er_auto_refresh');
@@ -27,7 +31,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'log'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'log' | 'shift'>('table');
   const [activeTab, setActiveTab] = useState<'general' | 'ambulatory'>('general');
   
   const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
@@ -50,16 +54,24 @@ const App: React.FC = () => {
       setBeds(loadedBeds);
 
       const loadedDoctors = await DataService.fetchStaff('doctors');
-      setDoctors(loadedDoctors);
+      const sanitizedDocs = loadedDoctors.map(d => ({ ...d, isActive: d.isActive !== undefined ? d.isActive : true }));
+      setDoctors(sanitizedDocs);
 
       const loadedNurses = await DataService.fetchStaff('nurses');
-      setNurses(loadedNurses);
+      const sanitizedNurses = loadedNurses.map(n => ({ ...n, isActive: n.isActive !== undefined ? n.isActive : true }));
+      setNurses(sanitizedNurses);
 
       const loadedMeds = await DataService.fetchMedications();
       setMedicationBank(loadedMeds);
 
       const loadedLogs = await DataService.fetchLogs();
       setPatientLog(loadedLogs);
+      
+      const savedAssigns = localStorage.getItem('er_assignment_logs');
+      if (savedAssigns) setAssignmentLogs(JSON.parse(savedAssigns));
+
+      const savedShifts = localStorage.getItem('er_work_shifts');
+      if (savedShifts) setWorkShifts(JSON.parse(savedShifts));
     };
     loadData();
   }, []);
@@ -71,6 +83,40 @@ const App: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('er_work_shifts', JSON.stringify(workShifts));
+    
+    // Auto-update doctor availability based on shifts
+    const checkShifts = () => {
+        const now = new Date().getTime();
+        let updated = false;
+        
+        const newDoctors = doctors.map(doc => {
+            const shift = workShifts.find(s => s.doctorId === doc.id);
+            if (!shift) return doc; // No shift assigned, keep manual state (or default true)
+            
+            const start = new Date(shift.start).getTime();
+            const end = new Date(shift.end).getTime();
+            const isActive = now >= start && now < end;
+            
+            if (doc.isActive !== isActive || doc.currentShiftId !== shift.id) {
+                updated = true;
+                return { ...doc, isActive, currentShiftId: shift.id };
+            }
+            return doc;
+        });
+
+        if (updated) {
+            setDoctors(newDoctors);
+            DataService.saveStaff('doctors', newDoctors);
+        }
+    };
+
+    checkShifts();
+    const interval = setInterval(checkShifts, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [workShifts, doctors]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -100,7 +146,7 @@ const App: React.FC = () => {
   const checkOverduePatients = () => {
     const now = new Date();
     beds.forEach(bed => {
-      if (bed.patient && bed.status !== PatientStatus.EMPTY) {
+      if (bed && bed.patient && bed.status !== PatientStatus.EMPTY) {
         const [hours, minutes] = bed.patient.arrivalTime.split(':').map(Number);
         const arrivalDate = new Date();
         arrivalDate.setHours(hours, minutes, 0, 0);
@@ -123,7 +169,7 @@ const App: React.FC = () => {
   const checkMedicationReminders = () => {
     const now = new Date();
     beds.forEach(bed => {
-       if (bed.patient && bed.patient.medications) {
+       if (bed && bed.patient && bed.patient.medications) {
           bed.patient.medications.forEach(med => {
              if (med.status === MedicationStatus.PENDING && med.reminderAt) {
                 const reminderTime = new Date(med.reminderAt);
@@ -191,18 +237,17 @@ const App: React.FC = () => {
     let newLogs = [...patientLog];
     const oldBed = beds.find(b => b.id === updatedBed.id);
 
+    // Notifications Logic
     if (updatedBed.patient && updatedBed.patient.triageCategory === TriageCategory.IMMEDIATE) {
        if (!oldBed?.patient || oldBed.patient.triageCategory !== TriageCategory.IMMEDIATE) {
           addNotification('ALERT', `SKUBU: Naujas 1 kat. pacientas Lovoje ${updatedBed.label}`, updatedBed.id);
        }
     }
-
     if (currentUser && updatedBed.assignedDoctorId === currentUser.id) {
        if (oldBed?.assignedDoctorId !== currentUser.id) {
           addNotification('INFO', `Jums priskirtas naujas pacientas: Lova ${updatedBed.label}`, updatedBed.id);
        }
     }
-
     const oldMeds = oldBed?.patient?.medications || [];
     const newMeds = updatedBed.patient?.medications || [];
     if (newMeds.length > oldMeds.length) {
@@ -210,9 +255,33 @@ const App: React.FC = () => {
        addNotification('INFO', `Naujas paskyrimas lovoje ${updatedBed.label}: ${latestMed.name}`, updatedBed.id);
     }
 
+    // --- ASSIGNMENT LOGGING (Workload History) ---
+    // Log if a doctor is newly assigned to a valid patient
+    if (updatedBed.patient && updatedBed.assignedDoctorId && updatedBed.status !== PatientStatus.EMPTY) {
+        // If doctor changed OR if new patient admitted (check patient ID change)
+        const isNewAssignment = 
+            (oldBed?.assignedDoctorId !== updatedBed.assignedDoctorId) || 
+            (oldBed?.patient?.id !== updatedBed.patient.id);
+        
+        if (isNewAssignment) {
+            const newLog: AssignmentLog = {
+                id: `assign-${Date.now()}`,
+                doctorId: updatedBed.assignedDoctorId,
+                patientName: updatedBed.patient.name,
+                triageCategory: updatedBed.patient.triageCategory,
+                assignedAt: new Date().toISOString()
+            };
+            const updatedAssignments = [...assignmentLogs, newLog];
+            setAssignmentLogs(updatedAssignments);
+            localStorage.setItem('er_assignment_logs', JSON.stringify(updatedAssignments));
+        }
+    }
+
+    // Update Beds State
     const newBeds = beds.map(b => b.id === updatedBed.id ? updatedBed : b);
     setBeds(newBeds);
     
+    // Archive Logic (Discharge)
     if (oldBed?.patient && (!updatedBed.patient || updatedBed.status === PatientStatus.EMPTY)) {
       const docName = doctors.find(d => d.id === oldBed.assignedDoctorId)?.name;
       
@@ -242,6 +311,14 @@ const App: React.FC = () => {
     setSelectedBed(null);
   };
 
+  const handleQuickStatusChange = (bed: Bed, newStatus: PatientStatus) => {
+    const updatedBed: Bed = {
+      ...bed,
+      status: newStatus
+    };
+    handleSaveBed(updatedBed);
+  };
+
   const handleQuickDischarge = async (bed: Bed) => {
     if (!bed.patient) return;
     
@@ -263,6 +340,8 @@ const App: React.FC = () => {
     setMedicationBank(INITIAL_MEDICATIONS);
     setBeds(INITIAL_BEDS);
     setPatientLog([]);
+    setAssignmentLogs([]);
+    setWorkShifts([]);
     setNotifications([]);
     setAutoRefresh(true);
     localStorage.clear();
@@ -333,6 +412,8 @@ const App: React.FC = () => {
   };
 
   const filteredBeds = beds.filter(bed => {
+    if (!bed) return false; // Guard against null beds
+    
     const isAmbulatory = bed.section === 'Ambulatorinis (2 slaug.)';
     if (activeTab === 'general' && isAmbulatory) return false;
     if (activeTab === 'ambulatory' && !isAmbulatory) return false;
@@ -344,7 +425,7 @@ const App: React.FC = () => {
     const lowerQuery = searchQuery.toLowerCase();
     const doctorName = doctors.find(d => d.id === bed.assignedDoctorId)?.name.toLowerCase() || '';
     return (
-      bed.patient?.name.toLowerCase().includes(lowerQuery) ||
+      (bed.patient?.name.toLowerCase().includes(lowerQuery) || false) ||
       bed.label.toLowerCase().includes(lowerQuery) ||
       bed.section.toLowerCase().includes(lowerQuery) ||
       doctorName.includes(lowerQuery)
@@ -352,14 +433,14 @@ const App: React.FC = () => {
   });
 
   const totalBedsCount = beds.length;
-  const occupiedBedsCount = beds.filter(b => b.status !== PatientStatus.EMPTY).length;
+  const occupiedBedsCount = beds.filter(b => b && b.status !== PatientStatus.EMPTY).length;
   const emptyBedsCount = totalBedsCount - occupiedBedsCount;
-  const criticalPatients = beds.filter(b => b.patient && b.patient.triageCategory <= 2).length;
-  const waitingPatients = beds.filter(b => b.status === PatientStatus.WAITING_EXAM).length;
+  const criticalPatients = beds.filter(b => b && b.patient && b.patient.triageCategory <= 2).length;
+  const waitingPatients = beds.filter(b => b && b.status === PatientStatus.WAITING_EXAM).length;
   const unreadCount = notifications.length;
 
-  const generalOccupied = beds.filter(b => b.section !== 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
-  const ambulatoryOccupied = beds.filter(b => b.section === 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
+  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
+  const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorinis (2 slaug.)' && b.status !== PatientStatus.EMPTY).length;
 
   if (!currentUser) {
     return <LoginView doctors={doctors} nurses={nurses} onLogin={handleLogin} />;
@@ -398,6 +479,14 @@ const App: React.FC = () => {
             <FileText size={20} />
             <span className="hidden lg:block font-medium">Pacientų istorija</span>
           </button>
+
+           <button 
+            onClick={() => setViewMode('shift')}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'shift' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
+          >
+            <Briefcase size={20} />
+            <span className="hidden lg:block font-medium">Pamainos valdymas</span>
+          </button>
           
           <div className="my-4 border-t border-slate-800"></div>
           
@@ -411,7 +500,7 @@ const App: React.FC = () => {
                <div className="space-y-3 p-3 bg-slate-950/50 rounded-lg border border-slate-800/50">
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-300 font-medium">Užimta</span>
+                      <span className="text-slate-300 font-medium">Užimta (Viso)</span>
                       <span className="text-blue-400 font-bold">{occupiedBedsCount}</span>
                     </div>
                     <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
@@ -421,19 +510,20 @@ const App: React.FC = () => {
                       ></div>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400 font-medium">Laisva</span>
-                      <span className="text-slate-500 font-bold">{emptyBedsCount}</span>
-                    </div>
-                    <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                      <div 
-                        className="bg-slate-600 h-2 rounded-full transition-all duration-700 ease-out" 
-                        style={{ width: `${(emptyBedsCount / totalBedsCount) * 100}%` }}
-                      ></div>
-                    </div>
+                  
+                  {/* Detailed Breakdown */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/50 mt-2">
+                      <div className="bg-slate-900/50 p-2 rounded">
+                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Salė</div>
+                          <div className="text-lg font-bold text-blue-400">{generalOccupied}</div>
+                      </div>
+                      <div className="bg-slate-900/50 p-2 rounded">
+                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Amb</div>
+                          <div className="text-lg font-bold text-amber-500">{ambulatoryOccupied}</div>
+                      </div>
                   </div>
-                   <div className="pt-2 border-t border-slate-800/50 flex justify-between text-[10px] text-slate-500 uppercase tracking-wide">
+
+                  <div className="pt-2 border-t border-slate-800/50 flex justify-between text-[10px] text-slate-500 uppercase tracking-wide">
                       <span>Iš viso lovų</span>
                       <span className="font-mono">{totalBedsCount}</span>
                    </div>
@@ -645,6 +735,7 @@ const App: React.FC = () => {
                 doctors={doctors}
                 onRowClick={handleBedClick}
                 onDischarge={handleQuickDischarge}
+                onStatusChange={handleQuickStatusChange}
                />
             </div>
           ) : viewMode === 'map' ? (
@@ -661,6 +752,20 @@ const App: React.FC = () => {
               <PatientLogView 
                 logs={patientLog}
                 doctors={doctors}
+              />
+            </div>
+          ) : viewMode === 'shift' ? (
+            <div className="absolute inset-0 overflow-hidden">
+              <ShiftManagerView 
+                doctors={doctors}
+                setDoctors={updateDoctors}
+                nurses={nurses}
+                setNurses={updateNurses}
+                beds={beds}
+                patientLogs={patientLog}
+                assignmentLogs={assignmentLogs}
+                workShifts={workShifts}
+                setWorkShifts={setWorkShifts}
               />
             </div>
           ) : (
@@ -682,15 +787,19 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <EditPatientModal
-        bed={selectedBed!} // Safe because modal only opens when selectedBed is set
-        doctors={doctors}
-        currentUser={currentUser}
-        medicationBank={medicationBank}
-        isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setSelectedBed(null); }}
-        onSave={handleSaveBed}
-      />
+      {isModalOpen && selectedBed && (
+        <EditPatientModal
+          bed={selectedBed}
+          beds={beds}
+          doctors={doctors}
+          currentUser={currentUser}
+          medicationBank={medicationBank}
+          isOpen={isModalOpen}
+          onClose={() => { setIsModalOpen(false); setSelectedBed(null); }}
+          onSave={handleSaveBed}
+          workShifts={workShifts}
+        />
+      )}
     </div>
   );
 };
