@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2, Briefcase, UserPlus, FileBarChart, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { LayoutGrid, List, Activity, Users, Settings, Bell, Search, Menu, BarChart3, Filter, FileText, Stethoscope, LogOut, ChevronDown, User as UserIcon, X, Check, Trash2, Briefcase, UserPlus, FileBarChart, LayoutDashboard, ClipboardList, Megaphone } from 'lucide-react';
 import BedTableView from './components/BedTableView';
 import BedMapView from './components/BedMapView';
 import EditPatientModal from './components/EditPatientModal';
@@ -11,10 +11,10 @@ import LoginView from './components/LoginView';
 import TriageModal from './components/TriageModal';
 import ReportsView from './components/ReportsView';
 import AdminDashboardView from './components/AdminDashboardView';
-import TasksView from './components/TasksView'; // NEW IMPORT
+import TasksView from './components/TasksView';
 import { DataService } from './services/DataService';
-import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem, AssignmentLog, WorkShift, RegistrationLog, Patient } from './types';
-import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS, PHYSICAL_SECTIONS } from './constants';
+import { Bed, PatientStatus, Staff, PatientLogEntry, UserProfile, AppNotification, TriageCategory, MedicationStatus, MedicationItem, AssignmentLog, WorkShift, RegistrationLog, Patient, MedicationProtocol, AppSettings, StaffSpecialization, StaffSkill } from './types';
+import { INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS, PHYSICAL_SECTIONS, INITIAL_PROTOCOLS, DEFAULT_SETTINGS, INITIAL_SPECIALIZATIONS, INITIAL_SKILLS } from './constants';
 
 const App: React.FC = () => {
   const [doctors, setDoctors] = useState<Staff[]>(DOCTORS);
@@ -26,6 +26,28 @@ const App: React.FC = () => {
   const [registrationLogs, setRegistrationLogs] = useState<RegistrationLog[]>([]); 
   const [workShifts, setWorkShifts] = useState<WorkShift[]>([]);
   
+  // NEW STATES
+  const [sections, setSections] = useState<string[]>(() => {
+      const saved = localStorage.getItem('er_sections');
+      return saved ? JSON.parse(saved) : PHYSICAL_SECTIONS;
+  });
+  const [protocols, setProtocols] = useState<MedicationProtocol[]>(() => {
+      const saved = localStorage.getItem('er_protocols');
+      return saved ? JSON.parse(saved) : INITIAL_PROTOCOLS;
+  });
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+      const saved = localStorage.getItem('er_settings');
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+  });
+  const [specializations, setSpecializations] = useState<StaffSpecialization[]>(() => {
+      const saved = localStorage.getItem('er_specializations');
+      return saved ? JSON.parse(saved) : INITIAL_SPECIALIZATIONS;
+  });
+  const [skills, setSkills] = useState<StaffSkill[]>(() => {
+      const saved = localStorage.getItem('er_skills');
+      return saved ? JSON.parse(saved) : INITIAL_SKILLS;
+  });
+
   const [autoRefresh, setAutoRefresh] = useState(() => {
     const saved = localStorage.getItem('er_auto_refresh');
     return saved ? JSON.parse(saved) : true;
@@ -36,9 +58,14 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Updated viewMode type
-  const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'log' | 'shift' | 'reports' | 'admin_dashboard' | 'tasks'>('table');
-  const [activeTab, setActiveTab] = useState<'general' | 'ambulatory'>('general');
+  // Bulletin Message State
+  const [bulletinMessage, setBulletinMessage] = useState(() => localStorage.getItem('er_bulletin') || '');
+
+  // Removed 'log' from viewMode types as it is now inside reports
+  const [viewMode, setViewMode] = useState<'table' | 'map' | 'settings' | 'shift' | 'reports' | 'admin_dashboard' | 'tasks'>('table');
+  const [settingsTab, setSettingsTab] = useState('general'); // State to control which Settings tab is active
+  
+  const [activeTab, setActiveTab] = useState<'general' | 'ambulatory' | 'trauma'>('general');
   
   const [selectedBed, setSelectedBed] = useState<Bed | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -51,6 +78,7 @@ const App: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -137,6 +165,18 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Save new states to localStorage
+  useEffect(() => { localStorage.setItem('er_sections', JSON.stringify(sections)); }, [sections]);
+  useEffect(() => { localStorage.setItem('er_protocols', JSON.stringify(protocols)); }, [protocols]);
+  useEffect(() => { localStorage.setItem('er_settings', JSON.stringify(appSettings)); }, [appSettings]);
+  useEffect(() => { localStorage.setItem('er_specializations', JSON.stringify(specializations)); }, [specializations]);
+  useEffect(() => { localStorage.setItem('er_skills', JSON.stringify(skills)); }, [skills]);
+
+  // Close mobile menu on view change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [viewMode]);
+
   useEffect(() => {
     localStorage.setItem('er_work_shifts', JSON.stringify(workShifts));
     
@@ -195,6 +235,11 @@ const App: React.FC = () => {
     setNotifications(prev => [newNotif, ...prev]);
   };
 
+  const handleUpdateBulletin = (msg: string) => {
+      setBulletinMessage(msg);
+      localStorage.setItem('er_bulletin', msg);
+  };
+
   const checkOverduePatients = () => {
     const now = new Date();
     beds.forEach(bed => {
@@ -206,8 +251,9 @@ const App: React.FC = () => {
         if (diff < 0) diff += 24 * 60 * 60 * 1000;
         const diffMinutes = Math.floor(diff / 60000);
 
-        if (diffMinutes > 240) {
-          const msg = `Pacientas ${bed.patient.name} (Lova ${bed.label}) skyriuje > 4 val.`;
+        // Use dynamic overdue minutes from settings
+        if (diffMinutes > appSettings.overdueMinutes) {
+          const msg = `Pacientas ${bed.patient.name} (Lova ${bed.label}) skyriuje > ${Math.floor(appSettings.overdueMinutes/60)} val.`;
           const alreadyNotified = notifications.some(n => n.message === msg && !n.isRead);
           
           if (!alreadyNotified) {
@@ -253,6 +299,11 @@ const App: React.FC = () => {
     DataService.saveMedications(newMeds);
   };
 
+  const updateBeds = (newBeds: Bed[]) => {
+      setBeds(newBeds);
+      DataService.saveBeds(newBeds);
+  };
+
   useEffect(() => { localStorage.setItem('er_auto_refresh', JSON.stringify(autoRefresh)); }, [autoRefresh]);
 
   useEffect(() => {
@@ -265,7 +316,7 @@ const App: React.FC = () => {
       }, 60000);
     }
     return () => clearInterval(intervalId);
-  }, [autoRefresh, beds, notifications]);
+  }, [autoRefresh, beds, notifications, appSettings]);
 
   const handleBedClick = (bed: Bed) => {
     setSelectedBed(bed);
@@ -449,12 +500,18 @@ const App: React.FC = () => {
     setNurses(NURSES);
     setMedicationBank(INITIAL_MEDICATIONS);
     setBeds(INITIAL_BEDS);
+    setSections(PHYSICAL_SECTIONS);
+    setProtocols(INITIAL_PROTOCOLS);
+    setAppSettings(DEFAULT_SETTINGS);
+    setSpecializations(INITIAL_SPECIALIZATIONS);
+    setSkills(INITIAL_SKILLS);
     setPatientLog([]);
     setAssignmentLogs([]);
     setWorkShifts([]);
     setRegistrationLogs([]); 
     setNotifications([]);
     setAutoRefresh(true);
+    setBulletinMessage('');
     localStorage.clear();
     await DataService.saveBeds(INITIAL_BEDS);
     await DataService.saveStaff('doctors', DOCTORS);
@@ -530,8 +587,11 @@ const App: React.FC = () => {
     if (!bed) return false;
     
     const isAmbulatory = bed.section === 'Ambulatorija';
-    if (activeTab === 'general' && isAmbulatory) return false;
+    const isTrauma = bed.section === 'Traumos';
+
+    if (activeTab === 'general' && (isAmbulatory || isTrauma)) return false;
     if (activeTab === 'ambulatory' && !isAmbulatory) return false;
+    if (activeTab === 'trauma' && !isTrauma) return false;
 
     // Filter logic adjustment: If filtering by status EMPTY, don't show CLEANING beds (they are not empty yet)
     // But if filtering ALL, show them.
@@ -564,8 +624,9 @@ const App: React.FC = () => {
   const waitingPatients = beds.filter(b => b && b.status === PatientStatus.WAITING_EXAM).length;
   const unreadCount = notifications.length;
 
-  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorija' && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
+  const generalOccupied = beds.filter(b => b && b.section !== 'Ambulatorija' && b.section !== 'Traumos' && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
   const ambulatoryOccupied = beds.filter(b => b && b.section === 'Ambulatorija' && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
+  const traumaOccupied = beds.filter(b => b && b.section === 'Traumos' && b.status !== PatientStatus.EMPTY && b.status !== PatientStatus.CLEANING).length;
 
   const isTriageMode = currentUser && currentUser.assignedSection === 'Triažas';
   const isAdmin = currentUser && currentUser.role === 'Admin';
@@ -574,24 +635,17 @@ const App: React.FC = () => {
     return <LoginView doctors={doctors} nurses={nurses} onLogin={handleLogin} />;
   }
 
-  return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-100 font-sans">
-      <aside className="w-full md:w-20 lg:w-64 bg-slate-900 text-slate-400 flex flex-col shrink-0 transition-all duration-300 border-r border-slate-800">
-        <div className="h-16 flex items-center px-4 md:justify-center lg:justify-start gap-3 border-b border-slate-800">
-          <div className="bg-blue-600 p-1.5 rounded-lg text-white">
-            <Activity size={24} />
-          </div>
-          <h1 className="font-bold text-slate-100 text-lg hidden lg:block tracking-tight">ER Flow Manager</h1>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+  // --- NAVIGATION COMPONENT (Reused for Desktop & Mobile) ---
+  const NavigationContent = () => (
+    <>
+      <div className="flex-1 p-4 space-y-2 overflow-y-auto">
           {isAdmin && (
             <button 
                 onClick={() => setViewMode('admin_dashboard')}
                 className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'admin_dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
             >
                 <LayoutDashboard size={20} />
-                <span className="hidden lg:block font-medium">Dashboard</span>
+                <span className="font-medium">Dashboard</span>
             </button>
           )}
 
@@ -600,31 +654,22 @@ const App: React.FC = () => {
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
           >
             <List size={20} />
-            <span className="hidden lg:block font-medium">Sąrašas</span>
+            <span className="font-medium">Sąrašas</span>
           </button>
           <button 
             onClick={() => setViewMode('map')}
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'map' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
           >
             <LayoutGrid size={20} />
-            <span className="hidden lg:block font-medium">Žemėlapis</span>
+            <span className="font-medium">Žemėlapis</span>
           </button>
 
-          {/* New Tasks Button */}
           <button 
             onClick={() => setViewMode('tasks')}
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'tasks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
           >
             <ClipboardList size={20} />
-            <span className="hidden lg:block font-medium">Užduotys</span>
-          </button>
-
-           <button 
-            onClick={() => setViewMode('log')}
-            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'log' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
-          >
-            <FileText size={20} />
-            <span className="hidden lg:block font-medium">Pacientų istorija</span>
+            <span className="font-medium">Užduotys</span>
           </button>
 
            <button 
@@ -632,7 +677,7 @@ const App: React.FC = () => {
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'shift' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
           >
             <Briefcase size={20} />
-            <span className="hidden lg:block font-medium">Pamainos valdymas</span>
+            <span className="font-medium">Pamainos valdymas</span>
           </button>
 
           <button 
@@ -640,11 +685,12 @@ const App: React.FC = () => {
             className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${viewMode === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'}`}
           >
             <FileBarChart size={20} />
-            <span className="hidden lg:block font-medium">Ataskaitos</span>
+            <span className="font-medium">Ataskaitos</span>
           </button>
           
           <div className="my-4 border-t border-slate-800"></div>
           
+          {/* Detailed stats usually hidden on small mobile sidebars to save vertical space, but okay for drawer */}
           <div className="hidden lg:block">
             <div className="flex items-center gap-2 px-3 mb-3 text-slate-500">
                <BarChart3 size={16} />
@@ -666,14 +712,18 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/50 mt-2">
-                      <div className="bg-slate-900/50 p-2 rounded">
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/50 mt-2">
+                      <div className="bg-slate-900/50 p-2 rounded text-center">
                           <div className="text-[10px] text-slate-500 uppercase font-semibold">Salė</div>
                           <div className="text-lg font-bold text-blue-400">{generalOccupied}</div>
                       </div>
-                      <div className="bg-slate-900/50 p-2 rounded">
+                      <div className="bg-slate-900/50 p-2 rounded text-center">
                           <div className="text-[10px] text-slate-500 uppercase font-semibold">Amb</div>
                           <div className="text-lg font-bold text-amber-500">{ambulatoryOccupied}</div>
+                      </div>
+                      <div className="bg-slate-900/50 p-2 rounded text-center">
+                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Traum</div>
+                          <div className="text-lg font-bold text-purple-500">{traumaOccupied}</div>
                       </div>
                   </div>
                </div>
@@ -696,52 +746,94 @@ const App: React.FC = () => {
                </div>
             </div>
           </div>
-        </nav>
+        </div>
 
         <div className="p-4 border-t border-slate-800">
           <button 
-            onClick={() => setViewMode('settings')}
+            onClick={() => { setViewMode('settings'); setSettingsTab('general'); }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${viewMode === 'settings' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50'}`}
           >
             <Settings size={20} />
-            <span className="hidden lg:block">Nustatymai</span>
+            <span className="font-medium">Nustatymai</span>
           </button>
         </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-slate-950 text-slate-100 font-sans">
+      
+      {/* MOBILE DRAWER OVERLAY */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+           <div className="relative bg-slate-900 w-3/4 max-w-xs h-full border-r border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-left duration-300">
+              <div className="h-16 flex items-center px-4 justify-between border-b border-slate-800 shrink-0">
+                 <div className="flex items-center gap-3">
+                    <div className="bg-blue-600 p-1.5 rounded-lg text-white">
+                        <Activity size={24} />
+                    </div>
+                    <h1 className="font-bold text-slate-100 text-lg tracking-tight">ER Flow</h1>
+                 </div>
+                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-slate-400 hover:text-white">
+                    <X size={24} />
+                 </button>
+              </div>
+              <NavigationContent />
+           </div>
+        </div>
+      )}
+
+      {/* DESKTOP SIDEBAR (Hidden on Mobile) */}
+      <aside className="hidden md:flex w-20 lg:w-64 bg-slate-900 text-slate-400 flex-col shrink-0 transition-all duration-300 border-r border-slate-800 h-screen sticky top-0">
+        <div className="h-16 flex items-center px-4 md:justify-center lg:justify-start gap-3 border-b border-slate-800 shrink-0">
+          <div className="bg-blue-600 p-1.5 rounded-lg text-white">
+            <Activity size={24} />
+          </div>
+          <h1 className="font-bold text-slate-100 text-lg hidden lg:block tracking-tight">ER Flow Manager</h1>
+        </div>
+        <NavigationContent />
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-950">
-        <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 shadow-sm z-20">
+        <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 md:px-6 shrink-0 shadow-sm z-20">
            
            <div className="flex items-center gap-4 w-full max-w-5xl">
              
+             {/* Mobile Menu Button */}
+             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden p-2 -ml-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+                <Menu size={24} />
+             </button>
+
              {isTriageMode ? (
                 <div className="flex-1 flex items-center gap-4 animate-in fade-in slide-in-from-left-4">
                     <button 
                         onClick={() => setIsTriageModalOpen(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-900/40 flex items-center gap-2 transform hover:scale-105 transition"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-bold shadow-lg shadow-blue-900/40 flex items-center gap-2 transform hover:scale-105 transition text-xs md:text-base"
                     >
-                        <UserPlus size={20} />
-                        NAUJAS PACIENTAS (TRIAŽAS)
+                        <UserPlus size={18} />
+                        <span className="hidden sm:inline">NAUJAS PACIENTAS</span>
+                        <span className="sm:hidden">REGISTRUOTI</span>
                     </button>
-                    <div className="h-8 w-px bg-slate-800 mx-2"></div>
-                    <div className="bg-slate-800 px-3 py-1 rounded text-slate-300 text-sm font-medium border border-blue-500/30">
-                        Jūsų postas: <span className="text-blue-400 font-bold">Triažas</span>
+                    <div className="hidden sm:block h-8 w-px bg-slate-800 mx-2"></div>
+                    <div className="hidden sm:block bg-slate-800 px-3 py-1 rounded text-slate-300 text-sm font-medium border border-blue-500/30">
+                        Postas: <span className="text-blue-400 font-bold">Triažas</span>
                     </div>
                 </div>
              ) : (
                 <>
-                    <div className="relative w-full max-w-xs lg:max-w-sm">
+                    <div className="relative w-full max-w-xs lg:max-w-sm hidden sm:block">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                         <input 
                         type="text" 
-                        placeholder="Ieškoti paciento, lovos, gydytojo..." 
+                        placeholder="Ieškoti..." 
                         className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none text-sm placeholder:text-slate-500"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
                     
-                    <div className="relative w-40 lg:w-48 hidden sm:block">
+                    <div className="relative w-40 lg:w-48 hidden md:block">
                         <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                         <select 
                         value={filterStatus}
@@ -755,7 +847,7 @@ const App: React.FC = () => {
                         </select>
                     </div>
 
-                    <div className="relative w-40 lg:w-48 hidden md:block">
+                    <div className="relative w-40 lg:w-48 hidden lg:block">
                         <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
                         <select 
                         value={filterNurse}
@@ -768,25 +860,11 @@ const App: React.FC = () => {
                         ))}
                         </select>
                     </div>
-
-                    <div className="relative w-40 lg:w-48 hidden lg:block">
-                        <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                        <select 
-                        value={filterDoctor}
-                        onChange={(e) => setFilterDoctor(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm appearance-none cursor-pointer"
-                        >
-                        <option value="ALL">Visi gydytojai</option>
-                        {doctors.map(doc => (
-                            <option key={doc.id} value={doc.id}>{doc.name}</option>
-                        ))}
-                        </select>
-                    </div>
                 </>
              )}
            </div>
 
-           <div className="flex items-center gap-4">
+           <div className="flex items-center gap-2 md:gap-4">
               <div className="relative" ref={notifRef}>
                 <button 
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -849,7 +927,7 @@ const App: React.FC = () => {
                   <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-blue-900/50">
                     {currentUser.name.substring(0, 2).toUpperCase()}
                   </div>
-                  <ChevronDown size={14} className="text-slate-500" />
+                  <ChevronDown size={14} className="text-slate-500 hidden sm:block" />
                 </button>
 
                 {isUserMenuOpen && (
@@ -871,7 +949,7 @@ const App: React.FC = () => {
                         </button>
                       )}
                       <button 
-                        onClick={() => { setViewMode('settings'); setIsUserMenuOpen(false); }}
+                        onClick={() => { setViewMode('settings'); setSettingsTab('general'); setIsUserMenuOpen(false); }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition"
                       >
                          <Settings size={14} /> Nustatymai
@@ -889,22 +967,39 @@ const App: React.FC = () => {
            </div>
         </header>
         
+        {/* BULLETIN BOARD BANNER */}
+        {bulletinMessage && (
+            <div className="bg-yellow-900/30 border-b border-yellow-500/20 text-yellow-100 px-4 md:px-6 py-2 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 shrink-0">
+                <div className="bg-yellow-500/20 p-1 rounded">
+                    <Megaphone size={16} className="text-yellow-500 animate-pulse" />
+                </div>
+                <span className="font-medium text-xs md:text-sm flex-1">{bulletinMessage}</span>
+            </div>
+        )}
+
         {/* Tab Navigation (Only visible in Table/Map view) */}
         {(viewMode === 'table' || viewMode === 'map') && (
-          <div className="flex items-center px-6 pt-2 gap-1 border-b border-slate-800 bg-slate-950 shrink-0">
+          <div className="flex items-center px-4 md:px-6 pt-2 gap-1 border-b border-slate-800 bg-slate-900 shrink-0 overflow-x-auto no-scrollbar">
              <button
                onClick={() => setActiveTab('general')}
-               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'general' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+               className={`px-3 md:px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'general' ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
              >
                 Salė
                 {generalOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{generalOccupied}</span>}
              </button>
              <button
                onClick={() => setActiveTab('ambulatory')}
-               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'ambulatory' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+               className={`px-3 md:px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'ambulatory' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
              >
                 Ambulatorija
                 {ambulatoryOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{ambulatoryOccupied}</span>}
+             </button>
+             <button
+               onClick={() => setActiveTab('trauma')}
+               className={`px-3 md:px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'trauma' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-800'}`}
+             >
+                Traumos
+                {traumaOccupied > 0 && <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded-full text-[10px]">{traumaOccupied}</span>}
              </button>
           </div>
         )}
@@ -942,13 +1037,6 @@ const App: React.FC = () => {
                  onUpdateBed={handleSaveBed}
                />
             </div>
-          ) : viewMode === 'log' ? (
-            <div className="absolute inset-0 overflow-hidden">
-              <PatientLogView 
-                logs={patientLog}
-                doctors={doctors}
-              />
-            </div>
           ) : viewMode === 'shift' ? (
             <div className="absolute inset-0 overflow-hidden">
               <ShiftManagerView 
@@ -962,6 +1050,9 @@ const App: React.FC = () => {
                 workShifts={workShifts}
                 setWorkShifts={setWorkShifts}
                 registrationLogs={registrationLogs} 
+                sections={sections} // Pass dynamic sections
+                specializations={specializations} // NEW PROP
+                skills={skills} // NEW PROP
               />
             </div>
           ) : viewMode === 'reports' ? ( 
@@ -969,6 +1060,8 @@ const App: React.FC = () => {
               <ReportsView 
                 registrationLogs={registrationLogs}
                 nurses={nurses}
+                patientLogs={patientLog}
+                doctors={doctors}
               />
             </div>
           ) : viewMode === 'admin_dashboard' ? ( 
@@ -979,7 +1072,9 @@ const App: React.FC = () => {
                 nurses={nurses}
                 patientLogs={patientLog}
                 registrationLogs={registrationLogs}
-                onNavigate={(view) => setViewMode(view)}
+                onNavigate={(view, tab) => { setViewMode(view); if (tab && view === 'settings') setSettingsTab(tab); }}
+                bulletinMessage={bulletinMessage} // PASS BULLETIN
+                onUpdateBulletin={handleUpdateBulletin} // PASS UPDATE HANDLER
               />
             </div>
           ) : (
@@ -995,6 +1090,20 @@ const App: React.FC = () => {
                 setAutoRefresh={setAutoRefresh}
                 onResetData={handleResetData}
                 currentUser={currentUser}
+                // NEW PROPS
+                beds={beds}
+                setBeds={updateBeds}
+                sections={sections}
+                setSections={setSections}
+                protocols={protocols}
+                setProtocols={setProtocols}
+                appSettings={appSettings}
+                setAppSettings={setAppSettings}
+                specializations={specializations}
+                setSpecializations={setSpecializations}
+                skills={skills}
+                setSkills={setSkills}
+                initialTab={settingsTab}
               />
             </div>
           )}
@@ -1013,6 +1122,7 @@ const App: React.FC = () => {
           onClose={() => { setIsModalOpen(false); setSelectedBed(null); }}
           onSave={handleSaveBed}
           workShifts={workShifts}
+          protocols={protocols} // Pass dynamic protocols
         />
       )}
 

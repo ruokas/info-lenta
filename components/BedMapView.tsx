@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { TRIAGE_COLORS, STATUS_COLORS } from '../constants';
 import { User, Stethoscope, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Activity, Waves, HeartPulse, Sparkles, Check } from 'lucide-react';
@@ -16,6 +16,12 @@ interface BedMapViewProps {
 const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedClick, onMovePatient, onCleanBed }) => {
   const [dragOverBedId, setDragOverBedId] = useState<string | null>(null);
   const [animatingBeds, setAnimatingBeds] = useState<string[]>([]);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+      // Check for touch capability
+      setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
 
   const getDoctorInitials = (id?: string) => {
       const name = doctors.find(d => d.id === id)?.name;
@@ -56,6 +62,11 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedCli
   };
 
   const handleDragStart = (e: React.DragEvent, bed: Bed) => {
+    // Disable drag on touch devices to improve scrolling
+    if (isTouchDevice) {
+        e.preventDefault();
+        return;
+    }
     // Only allow dragging if there is a patient or the bed is not empty
     if (bed.status === PatientStatus.EMPTY && !bed.patient) {
       e.preventDefault();
@@ -66,6 +77,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedCli
   };
 
   const handleDragOver = (e: React.DragEvent, bedId: string) => {
+    if (isTouchDevice) return;
     e.preventDefault(); // Necessary to allow dropping
     e.dataTransfer.dropEffect = 'move';
     if (dragOverBedId !== bedId) {
@@ -99,8 +111,8 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedCli
   };
 
   return (
-    <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 h-full overflow-y-auto custom-scrollbar">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+    <div className="p-4 bg-slate-950 md:rounded-xl md:border md:border-slate-800 h-full overflow-y-auto custom-scrollbar">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4 pb-20 md:pb-0">
         {beds.map((bed) => {
           if (!bed) return null; // Guard against null beds
 
@@ -108,7 +120,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedCli
           const isCleaning = bed.status === PatientStatus.CLEANING;
           const isDragTarget = dragOverBedId === bed.id;
           const isAnimating = animatingBeds.includes(bed.id);
-          const canDrag = !isEmpty && !isCleaning;
+          const canDrag = !isEmpty && !isCleaning && !isTouchDevice;
           const overdue = !isEmpty && !isCleaning && bed.patient && isOverdue(bed.patient.arrivalTime);
           const isAmb = bed.label.startsWith('A') && !bed.label.startsWith('Arm');
           const medColor = getMedicationStatusColor(bed);
@@ -169,7 +181,7 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedCli
                         </span>
                         <button 
                             onClick={(e) => handleCleanClick(e, bed)}
-                            className="px-3 py-1.5 bg-slate-700 hover:bg-emerald-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition shadow-sm border border-slate-600 hover:border-emerald-500 flex items-center gap-1"
+                            className="px-3 py-1.5 bg-slate-700 hover:bg-emerald-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition shadow-sm border border-slate-600 hover:border-emerald-500 flex items-center gap-1 w-full justify-center"
                         >
                             <Check size={14} /> IŠVALYTA
                         </button>

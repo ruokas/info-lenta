@@ -1,5 +1,5 @@
 
-import { Bed, PatientStatus, TriageCategory, Staff, MedicationItem } from './types';
+import { Bed, PatientStatus, TriageCategory, Staff, MedicationItem, MedicationProtocol, AppSettings, StaffSpecialization, StaffSkill } from './types';
 
 export const PHYSICAL_SECTIONS = [
   'Triažas',
@@ -8,26 +8,45 @@ export const PHYSICAL_SECTIONS = [
   '3 Postas',
   '4 Postas',
   '5 Postas',
-  'Ambulatorija'
+  'Ambulatorija',
+  'Traumos'
+];
+
+// Initial HR Data
+export const INITIAL_SPECIALIZATIONS: StaffSpecialization[] = [
+  { id: 'spec-emd', name: 'Skubios med. gydytojas', isDoctor: true },
+  { id: 'spec-res', name: 'Rezidentas', isDoctor: true },
+  { id: 'spec-med', name: 'Medicinos gydytojas', isDoctor: true },
+  { id: 'spec-trauma', name: 'Traumatologas', isDoctor: true },
+  { id: 'spec-gp', name: 'Bendrosios praktikos', isDoctor: false },
+  { id: 'spec-anes', name: 'AITS slaugytoja', isDoctor: false },
+];
+
+export const INITIAL_SKILLS: StaffSkill[] = [
+  { id: 'skill-echo', label: 'ECHO', color: 'bg-blue-500', description: 'Gali atlikti echoskopiją' },
+  { id: 'skill-peds', label: 'PEDS', color: 'bg-pink-500', description: 'Gali prižiūrėti vaikus' },
+  { id: 'skill-als', label: 'ALS', color: 'bg-red-500', description: 'Reanimacijos sertifikatas' },
+  { id: 'skill-triage', label: 'TRIAŽAS', color: 'bg-indigo-500', description: 'Gali dirbti triaže' },
 ];
 
 // Staff Data
 export const DOCTORS: Staff[] = [
-  { id: 'd1', name: 'Gyd. Nida', role: 'Doctor' },
-  { id: 'd2', name: 'Gyd. Karolina', role: 'Doctor' },
-  { id: 'd3', name: 'Gyd. Milda', role: 'Doctor' },
-  { id: 'd4', name: 'Gyd. Rokas', role: 'Doctor' },
+  { id: 'd1', name: 'Gyd. Nida', role: 'Doctor', specializationId: 'spec-emd', skillIds: ['skill-echo'] },
+  { id: 'd2', name: 'Gyd. Karolina', role: 'Doctor', specializationId: 'spec-res', skillIds: [] },
+  { id: 'd3', name: 'Gyd. Milda', role: 'Doctor', specializationId: 'spec-emd', skillIds: ['skill-als'] },
+  { id: 'd4', name: 'Gyd. Rokas', role: 'Doctor', specializationId: 'spec-trauma', skillIds: [] },
 ];
 
 export const NURSES: Staff[] = [
-  { id: 'n1', name: 'Aušra', role: 'Nurse', assignedSection: '1 Postas' },
-  { id: 'n2', name: 'Deimantė', role: 'Nurse', assignedSection: '2 Postas' },
-  { id: 'n3', name: 'Kristina M.', role: 'Nurse', assignedSection: '3 Postas' },
-  { id: 'n4', name: 'Armanda', role: 'Nurse', assignedSection: '4 Postas' },
-  { id: 'n5', name: 'Kristina A.', role: 'Nurse', assignedSection: '5 Postas' },
-  { id: 'n6', name: 'Amb. Slaug. 1', role: 'Nurse', assignedSection: 'Ambulatorija' },
-  { id: 'n7', name: 'Amb. Slaug. 2', role: 'Nurse', assignedSection: 'Ambulatorija' },
-  { id: 'n_triage_default', name: 'Triažo Slaug.', role: 'Nurse', assignedSection: 'Triažas' },
+  { id: 'n1', name: 'Aušra', role: 'Nurse', assignedSection: '1 Postas', specializationId: 'spec-gp' },
+  { id: 'n2', name: 'Deimantė', role: 'Nurse', assignedSection: '2 Postas', specializationId: 'spec-gp' },
+  { id: 'n3', name: 'Kristina M.', role: 'Nurse', assignedSection: '3 Postas', specializationId: 'spec-gp' },
+  { id: 'n4', name: 'Armanda', role: 'Nurse', assignedSection: '4 Postas', specializationId: 'spec-gp' },
+  { id: 'n5', name: 'Kristina A.', role: 'Nurse', assignedSection: '5 Postas', specializationId: 'spec-gp' },
+  { id: 'n6', name: 'Amb. Slaug. 1', role: 'Nurse', assignedSection: 'Ambulatorija', specializationId: 'spec-gp' },
+  { id: 'n7', name: 'Amb. Slaug. 2', role: 'Nurse', assignedSection: 'Ambulatorija', specializationId: 'spec-gp' },
+  { id: 'n8', name: 'Traumų Slaug.', role: 'Nurse', assignedSection: 'Traumos', specializationId: 'spec-gp' },
+  { id: 'n_triage_default', name: 'Triažo Slaug.', role: 'Nurse', assignedSection: 'Triažas', specializationId: 'spec-gp', skillIds: ['skill-triage'] },
 ];
 
 // Initial Medication Bank (Used if no custom data saved)
@@ -140,6 +159,58 @@ export const INITIAL_MEDICATIONS: MedicationItem[] = [
   { id: 'm106', name: 'Etanolio tirpalas', dose: '70% 100ml', route: 'Topical', category: 'Toksikologiniai' },
 ];
 
+export const INITIAL_PROTOCOLS: MedicationProtocol[] = [
+  { 
+    id: 'prot-pain',
+    name: 'Skausmo', 
+    meds: [
+      { name: 'Ketorolaci tromethaminum', dose: '30mg', route: 'IV' },
+      { name: 'Paracetamolum', dose: '1g', route: 'IV' }
+    ],
+    actions: []
+  },
+  { 
+    id: 'prot-acs',
+    name: 'ŪKS (ACS)', 
+    meds: [
+      { name: 'Acidum acetylsalicylicum', dose: '300mg', route: 'PO' },
+      { name: 'Tikagreloras', dose: '180mg', route: 'PO' },
+      { name: 'Heparinum', dose: '5000UI', route: 'IV' }
+    ],
+    actions: [
+      { type: 'EKG', name: 'EKG' }
+    ]
+  },
+  { 
+    id: 'prot-sepsis',
+    name: 'Sepsis', 
+    meds: [
+      { name: 'Sodium chloride 0,9%', dose: '1000ml', route: 'IV' },
+      { name: 'Amoxicillinum/Acidum Clavulanicum', dose: '1.2g', route: 'IV' },
+      { name: 'Paracetamolum', dose: '1g', route: 'IV' }
+    ],
+    actions: [
+      { type: 'LABS', name: 'Kraujo Pasėlis' },
+      { type: 'LABS', name: 'Laktatas' }
+    ]
+  },
+  { 
+    id: 'prot-nausea',
+    name: 'Pykinimo', 
+    meds: [
+      { name: 'Metoclopramidum', dose: '10mg', route: 'IV' },
+      { name: 'Sodium chloride 0,9%', dose: '500ml', route: 'IV' }
+    ],
+    actions: []
+  }
+];
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  overdueMinutes: 240, // 4 hours
+  cleaningMinutes: 15
+};
+
+// Deprecated: Kept for backward compatibility if needed, but App uses INITIAL_PROTOCOLS
 export const MEDICATION_PROTOCOLS = [
   { 
     name: 'Skausmo', 
@@ -308,6 +379,23 @@ export const INITIAL_BEDS: Bed[] = [
   { id: 'bed-a13', label: 'A13', section: 'Ambulatorija', status: PatientStatus.EMPTY },
   { id: 'bed-a14', label: 'A14', section: 'Ambulatorija', status: PatientStatus.EMPTY },
   { id: 'bed-a15', label: 'A15', section: 'Ambulatorija', status: PatientStatus.EMPTY },
+
+  // Section 7: Traumos (NEW)
+  { id: 'bed-t1', label: 'T1', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t2', label: 'T2', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t3', label: 'T3', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t4', label: 'T4', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t5', label: 'T5', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t6', label: 'T6', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t7', label: 'T7', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t8', label: 'T8', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t9', label: 'T9', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t10', label: 'T10', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t11', label: 'T11', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t12', label: 'T12', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t13', label: 'T13', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t14', label: 'T14', section: 'Traumos', status: PatientStatus.EMPTY },
+  { id: 'bed-t15', label: 'T15', section: 'Traumos', status: PatientStatus.EMPTY },
 ];
 
 export const STATUS_COLORS: Record<PatientStatus, string> = {

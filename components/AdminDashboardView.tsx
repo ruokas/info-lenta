@@ -1,7 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Bed, Staff, PatientLogEntry, RegistrationLog, PatientStatus } from '../types';
-import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight, Megaphone, Save, Trash2 } from 'lucide-react';
 import { TRIAGE_COLORS, PHYSICAL_SECTIONS } from '../constants';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -11,7 +11,9 @@ interface AdminDashboardViewProps {
   nurses: Staff[];
   patientLogs: PatientLogEntry[];
   registrationLogs: RegistrationLog[];
-  onNavigate: (view: 'settings' | 'reports' | 'shift' | 'table') => void;
+  onNavigate: (view: 'settings' | 'reports' | 'shift' | 'table', tab?: string) => void;
+  bulletinMessage: string;
+  onUpdateBulletin: (msg: string) => void;
 }
 
 const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
@@ -20,9 +22,18 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   nurses,
   patientLogs,
   registrationLogs,
-  onNavigate
+  onNavigate,
+  bulletinMessage,
+  onUpdateBulletin
 }) => {
   
+  // Local state for editing the bulletin
+  const [localBulletin, setLocalBulletin] = useState(bulletinMessage);
+
+  useEffect(() => {
+      setLocalBulletin(bulletinMessage);
+  }, [bulletinMessage]);
+
   // --- STATISTICS CALCULATION ---
   const stats = useMemo(() => {
     const now = new Date();
@@ -129,7 +140,7 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             <p className="text-slate-400 mt-1">Skyriaus operatyvinė apžvalga ir valdymo centras.</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${isDbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-slate-600'}`}></div>
+            <div className={`w-2.5 h-2.5 rounded-full ${isDbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-600'}`}></div>
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                 {isDbConnected ? 'System Online' : 'Local Mode'}
             </span>
@@ -220,7 +231,7 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
          </div>
       </div>
 
-      {/* MIDDLE SECTION: VISUALIZATIONS */}
+      {/* MIDDLE SECTION: VISUALIZATIONS & BULLETIN */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
          {/* Section Load Chart */}
          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
@@ -250,31 +261,59 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
          </div>
 
-         {/* Triage Donut Chart */}
-         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col">
-            <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2">
-                <AlertTriangle size={18} className="text-yellow-500"/>
-                Kategorijų pasiskirstymas
-            </h3>
-            <div className="flex-1 flex items-center justify-center relative">
-                {/* Donut */}
-                <div 
-                    className="w-48 h-48 rounded-full relative"
-                    style={{ background: getDonutGradient() }}
-                >
-                    <div className="absolute inset-4 bg-slate-900 rounded-full flex flex-col items-center justify-center">
-                        <span className="text-3xl font-bold text-slate-200">{stats.occupiedBeds}</span>
-                        <span className="text-xs text-slate-500 uppercase">Pacientai</span>
+         {/* Bulletin Board Widget (NEW) & Triage Donut */}
+         <div className="flex flex-col gap-6">
+             {/* BULLETIN BOARD */}
+             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col">
+                <h3 className="font-bold text-slate-200 mb-3 flex items-center gap-2 text-sm uppercase">
+                    <Megaphone size={16} className="text-yellow-500"/>
+                    Skelbimų Lenta (Visiems)
+                </h3>
+                <textarea 
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-yellow-100 placeholder:text-slate-600 outline-none focus:border-yellow-500/50 resize-none"
+                    rows={3}
+                    placeholder="Rašykite skubią informaciją komandai..."
+                    value={localBulletin}
+                    onChange={(e) => setLocalBulletin(e.target.value)}
+                />
+                <div className="flex justify-end gap-2 mt-3">
+                    {localBulletin && (
+                        <button onClick={() => onUpdateBulletin('')} className="text-xs text-slate-500 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-800">
+                            <Trash2 size={12}/> Išvalyti
+                        </button>
+                    )}
+                    <button onClick={() => onUpdateBulletin(localBulletin)} className="bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg flex items-center gap-2 transition">
+                        <Save size={12}/> Skelbti
+                    </button>
+                </div>
+             </div>
+
+             {/* Triage Donut Chart */}
+             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col flex-1">
+                <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2">
+                    <AlertTriangle size={18} className="text-yellow-500"/>
+                    Kategorijų pasiskirstymas
+                </h3>
+                <div className="flex-1 flex items-center justify-center relative min-h-[150px]">
+                    {/* Donut */}
+                    <div 
+                        className="w-40 h-40 rounded-full relative"
+                        style={{ background: getDonutGradient() }}
+                    >
+                        <div className="absolute inset-4 bg-slate-900 rounded-full flex flex-col items-center justify-center">
+                            <span className="text-3xl font-bold text-slate-200">{stats.occupiedBeds}</span>
+                            <span className="text-xs text-slate-500 uppercase">Pacientai</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            {/* Legend */}
-            <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-600"></div> Kat 1 (Reanim): {stats.triageCounts[1]}</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-600"></div> Kat 2 (Skubi): {stats.triageCounts[2]}</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Kat 3 (Skubi): {stats.triageCounts[3]}</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-600"></div> Kat 4 (Std): {stats.triageCounts[4]}</div>
-            </div>
+                {/* Legend */}
+                <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-600"></div> Kat 1: {stats.triageCounts[1]}</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-600"></div> Kat 2: {stats.triageCounts[2]}</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Kat 3: {stats.triageCounts[3]}</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-600"></div> Kat 4: {stats.triageCounts[4]}</div>
+                </div>
+             </div>
          </div>
       </div>
 
@@ -282,7 +321,7 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Valdymo Centras</h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
          <button 
-            onClick={() => onNavigate('settings')}
+            onClick={() => onNavigate('settings', 'staff')}
             className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500/50 p-4 rounded-xl text-left transition group"
          >
             <div className="mb-3 bg-blue-900/20 text-blue-400 p-2.5 rounded-lg w-fit group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -293,7 +332,7 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
          </button>
 
          <button 
-            onClick={() => onNavigate('settings')}
+            onClick={() => onNavigate('settings', 'meds')}
             className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-yellow-500/50 p-4 rounded-xl text-left transition group"
          >
             <div className="mb-3 bg-yellow-900/20 text-yellow-400 p-2.5 rounded-lg w-fit group-hover:bg-yellow-600 group-hover:text-white transition-colors">

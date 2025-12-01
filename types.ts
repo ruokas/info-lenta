@@ -57,6 +57,9 @@ export interface ClinicalAction {
   isCompleted: boolean;
   requestedAt: string;
   completedAt?: string; // NEW: Timestamp when action was marked done
+  consultationStatus?: 'CALLED' | 'ARRIVED' | 'COMPLETED'; // NEW: Workflow for consults
+  calledAt?: string;
+  arrivedAt?: string;
 }
 
 // NEW: Vitals
@@ -81,6 +84,20 @@ export interface WorkShift {
   type: 'DAY' | 'NIGHT' | 'CUSTOM';
 }
 
+// NEW: HR / Qualifications
+export interface StaffSpecialization {
+  id: string;
+  name: string; // e.g. "Skubios med. gydytojas", "Rezidentas"
+  isDoctor: boolean; // Does it apply to doctors or nurses?
+}
+
+export interface StaffSkill {
+  id: string;
+  label: string; // e.g. "ECHO", "PEDS", "TRIAGE"
+  color: string; // tailwind color class e.g. "bg-blue-500"
+  description?: string;
+}
+
 export interface Staff {
   id: string;
   name: string;
@@ -89,6 +106,9 @@ export interface Staff {
   currentShiftId?: string; // Link to active shift
   assignedSection?: string; // NEW: Physical section assignment (e.g. '1 Postas')
   isDisabled?: boolean; // NEW: Temporarily disabled in Bank (e.g. Vacation/Long leave)
+  specializationId?: string; // NEW: Link to StaffSpecialization
+  skillIds?: string[]; // NEW: Array of StaffSkill IDs
+  phone?: string; // NEW: Short number
 }
 
 export interface UserProfile extends Staff {
@@ -168,4 +188,29 @@ export interface AppNotification {
   timestamp: Date;
   isRead: boolean;
   bedId?: string; // Optional link to a bed
+}
+
+// NEW: Protocol Types
+export interface ProtocolMedication {
+  name: string;
+  dose: string;
+  route: string;
+}
+
+export interface ProtocolAction {
+  type: ActionType;
+  name: string;
+}
+
+export interface MedicationProtocol {
+  id: string;
+  name: string;
+  meds: ProtocolMedication[];
+  actions: ProtocolAction[];
+}
+
+// NEW: App Settings
+export interface AppSettings {
+  overdueMinutes: number; // Default 240 (4 hours)
+  cleaningMinutes: number; // Default 15? (Not used for logic yet but for alerts)
 }

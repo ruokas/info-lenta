@@ -7,11 +7,11 @@ import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, Clipb
 interface BedTableViewProps {
   beds: Bed[];
   doctors: Staff[];
-  nurses: Staff[]; // NEW
+  nurses: Staff[]; 
   onRowClick: (bed: Bed) => void;
   onDischarge: (bed: Bed) => void;
   onStatusChange: (bed: Bed, newStatus: PatientStatus) => void;
-  onCleanBed: (bed: Bed) => void; // NEW
+  onCleanBed: (bed: Bed) => void; 
 }
 
 const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRowClick, onDischarge, onStatusChange, onCleanBed }) => {
@@ -106,8 +106,127 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
       onCleanBed(bed);
   };
 
+  // --- MOBILE CARD RENDERER ---
+  const renderMobileCard = (bed: Bed) => {
+    const isIT = bed.label.startsWith('IT');
+    const isAmb = bed.label.startsWith('A') && !bed.label.startsWith('Arm');
+    const isCleaning = bed.status === PatientStatus.CLEANING;
+    
+    let bedLabelClass = 'bg-slate-800 text-slate-400';
+    if (isIT) bedLabelClass = 'bg-blue-900/40 text-blue-200';
+    else if (isAmb) bedLabelClass = 'bg-amber-900/30 text-amber-300';
+
+    const { text: durationText, isOverdue } = getDurationInfo(bed.patient?.arrivalTime);
+    const medsStatus = getMedsStatus(bed);
+    const pendingActions = getActionStatus(bed);
+
+    return (
+        <div key={bed.id} className="bg-slate-900 p-2 border-b border-slate-800 last:border-0" onClick={() => onRowClick(bed)}>
+            <div className="flex justify-between items-center mb-1">
+                <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold px-2 py-0.5 rounded ${bedLabelClass}`}>{bed.label}</span>
+                    {bed.patient && (
+                        <span className={`w-4 h-4 flex items-center justify-center rounded-full font-bold text-[9px] ${TRIAGE_COLORS[bed.patient.triageCategory]}`}>
+                            {bed.patient.triageCategory}
+                        </span>
+                    )}
+                </div>
+                
+                {/* Status Only */}
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    {isCleaning ? (
+                        <button 
+                            onClick={(e) => handleCleanClick(e, bed)}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold bg-slate-700 hover:bg-emerald-600 text-slate-300 hover:text-white border border-slate-600"
+                        >
+                            <Sparkles size={10} /> Išvalyti
+                        </button>
+                    ) : bed.status !== PatientStatus.EMPTY ? (
+                        <div className={`relative px-2 py-0.5 rounded text-[9px] font-semibold border shadow-sm ${STATUS_COLORS[bed.status]}`}>
+                            <select
+                                value={bed.status}
+                                onChange={(e) => onStatusChange(bed, e.target.value as PatientStatus)}
+                                className="absolute inset-0 w-full h-full opacity-0 appearance-none"
+                            >
+                                {Object.values(PatientStatus).map(status => (
+                                    <option key={status} value={status}>{status}</option>
+                                ))}
+                            </select>
+                            <div className="flex items-center gap-1 pointer-events-none">
+                                <span className="max-w-[70px] truncate">{bed.status}</span>
+                                <ChevronDown size={8} />
+                            </div>
+                        </div>
+                    ) : (
+                        <span className="text-[9px] text-slate-500 font-medium px-2">Laisva</span>
+                    )}
+                </div>
+            </div>
+
+            <div className="mb-1">
+                {bed.patient ? (
+                    <>
+                        <div className="flex justify-between items-baseline mb-0.5">
+                            <div className="font-bold text-slate-100 text-sm leading-tight truncate pr-2 flex-1">{bed.patient.name}</div>
+                            <span className={`font-mono text-[10px] whitespace-nowrap ${isOverdue ? 'text-red-400 font-bold' : 'text-slate-500'}`}>
+                                <Clock size={8} className="inline mr-0.5"/>{durationText}
+                            </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">{bed.patient.symptoms}</div>
+                        <div className="flex items-center gap-3 mt-0.5 text-[9px] text-slate-500">
+                            <span className="flex items-center gap-1"><User size={8}/> {getDoctorName(bed.assignedDoctorId) || '-'}</span>
+                        </div>
+                    </>
+                ) : (
+                    <div className="text-slate-600 italic text-[10px] py-0.5">Nėra paciento</div>
+                )}
+            </div>
+
+            {/* Footer: Indicators & Discharge */}
+            {(getMedsStatus(bed) || (getActionStatus(bed)?.length || 0) > 0 || bed.patient) && (
+                <div className="flex justify-between items-center pt-1 border-t border-slate-800/50 min-h-[16px]">
+                    <div className="flex items-center gap-2">
+                        {getMedsStatus(bed) && (
+                            <div className={`flex items-center gap-0.5 ${getMedsStatus(bed)?.color}`}>
+                                <Pill size={10} />
+                                {(getMedsStatus(bed)?.count || 0) > 0 && <span className="text-[9px] font-bold">{getMedsStatus(bed)?.count}</span>}
+                            </div>
+                        )}
+                        {(getActionStatus(bed)?.length || 0) > 0 && (
+                            <div className="flex gap-1">
+                                {getActionStatus(bed)?.some(a => a.type === 'LABS') && <Microscope size={10} className="text-blue-400" />}
+                                {getActionStatus(bed)?.some(a => a.type === 'XRAY' || a.type === 'CT') && <FileImage size={10} className="text-yellow-400" />}
+                                {getActionStatus(bed)?.some(a => a.type === 'EKG') && <HeartPulse size={10} className="text-red-400" />}
+                                {getActionStatus(bed)?.some(a => a.type === 'CONSULT') && <ClipboardList size={10} className="text-purple-400" />}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Discharge Button */}
+                    {bed.patient && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                            {confirmDischargeId === bed.id ? (
+                                <div className="flex gap-1 animate-in zoom-in duration-200">
+                                    <button onClick={(e) => confirmDischarge(e, bed)} className="bg-red-600 text-white p-1 rounded shadow-sm"><Check size={10}/></button>
+                                    <button onClick={cancelDischarge} className="bg-slate-700 text-white p-1 rounded"><X size={10}/></button>
+                                </div>
+                            ) : (
+                                <button onClick={(e) => handleDischargeClick(e, bed.id)} className="text-slate-500 hover:text-red-400 p-1 bg-slate-800 rounded border border-slate-700">
+                                    <LogOut size={12} />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+  };
+
   return (
-    <div className="overflow-x-auto border-0 bg-slate-900 shadow-sm">
+    <>
+    {/* DESKTOP TABLE VIEW */}
+    <div className="hidden md:block overflow-x-auto border-0 bg-slate-900 shadow-sm h-full">
       <table className="w-full text-sm border-collapse">
         <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-semibold tracking-wider sticky top-0 z-10 shadow-sm">
           <tr>
@@ -117,12 +236,12 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
             <th className="px-2 py-3 text-center border-r border-slate-800 w-12">Kat.</th>
             <th className="px-4 py-3 text-left border-r border-slate-800 w-48">Pacientas</th>
             <th className="px-3 py-3 text-left border-r border-slate-800 w-40">Būklė</th>
-            <th className="px-2 py-3 text-center border-r border-slate-800 w-20">Veiksmai</th>
+            <th className="px-2 py-3 text-center border-r border-slate-800 w-28">Veiksmai</th>
             <th className="px-2 py-3 text-center border-r border-slate-800 w-12" title="Vaistai"><Pill size={14} className="mx-auto" /></th>
             <th className="px-3 py-3 text-center border-r border-slate-800 w-20">Atvyko</th>
             <th className="px-3 py-3 text-center border-r border-slate-800 w-24">Trukmė</th>
             <th className="px-4 py-3 text-left border-r border-slate-800">Komentaras</th>
-            <th className="px-3 py-3 text-center w-28">Išvykimas</th>
+            <th className="px-2 py-3 text-center border-r border-slate-800 w-12">Išvyk.</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
@@ -221,15 +340,18 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
                     </td>
 
                     <td onClick={() => onRowClick(bed)} className="px-2 py-1 border-r border-slate-800 text-center cursor-pointer">
-                       {pendingActions && pendingActions.length > 0 && (
-                          <div className="flex justify-center gap-1">
-                             {pendingActions.some(a => a.type === 'LABS') && <Microscope size={14} className="text-blue-400" />}
-                             {pendingActions.some(a => a.type === 'XRAY' || a.type === 'CT') && <FileImage size={14} className="text-yellow-400" />}
-                             {pendingActions.some(a => a.type === 'ULTRASOUND') && <Waves size={14} className="text-cyan-400" />}
-                             {pendingActions.some(a => a.type === 'EKG') && <HeartPulse size={14} className="text-red-400" />}
-                             {pendingActions.some(a => a.type === 'CONSULT') && <ClipboardList size={14} className="text-purple-400" />}
-                          </div>
-                       )}
+                       <div className="flex items-center justify-center gap-2">
+                           {/* Pending Actions Icons */}
+                           {pendingActions && pendingActions.length > 0 && (
+                              <div className="flex justify-center gap-1">
+                                 {pendingActions.some(a => a.type === 'LABS') && <Microscope size={14} className="text-blue-400" />}
+                                 {pendingActions.some(a => a.type === 'XRAY' || a.type === 'CT') && <FileImage size={14} className="text-yellow-400" />}
+                                 {pendingActions.some(a => a.type === 'ULTRASOUND') && <Waves size={14} className="text-cyan-400" />}
+                                 {pendingActions.some(a => a.type === 'EKG') && <HeartPulse size={14} className="text-red-400" />}
+                                 {pendingActions.some(a => a.type === 'CONSULT') && <ClipboardList size={14} className="text-purple-400" />}
+                              </div>
+                           )}
+                       </div>
                     </td>
 
                     <td onClick={() => onRowClick(bed)} className="px-2 py-1 border-r border-slate-800 text-center cursor-pointer">
@@ -258,38 +380,25 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
                        </div>
                     </td>
 
-                    {/* Discharge Action - Independent Cell */}
-                    <td className="px-2 py-2 text-center">
+                    {/* Discharge Column */}
+                    <td onClick={(e) => e.stopPropagation()} className="px-2 py-1 border-r border-slate-800 text-center">
                        {bed.patient && (
-                          confirmDischargeId === bed.id ? (
-                            <div className="flex items-center justify-center gap-1 animate-in zoom-in duration-200">
-                                <button
-                                    type="button"
-                                    onClick={(e) => confirmDischarge(e, bed)}
-                                    className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded shadow-lg shadow-red-900/30"
-                                    title="Patvirtinti"
+                          <div onClick={(e) => e.stopPropagation()}>
+                            {confirmDischargeId === bed.id ? (
+                                <div className="flex items-center justify-center gap-1 animate-in zoom-in duration-200">
+                                    <button onClick={(e) => confirmDischarge(e, bed)} className="p-1 bg-red-600 hover:bg-red-700 text-white rounded shadow-sm"><Check size={12} /></button>
+                                    <button onClick={cancelDischarge} className="p-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"><X size={12} /></button>
+                                </div>
+                            ) : (
+                                <button 
+                                    onClick={(e) => handleDischargeClick(e, bed.id)}
+                                    className="p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition pointer-events-auto"
+                                    title="Išrašyti pacientą"
                                 >
-                                    <Check size={14} />
+                                    <LogOut size={14} className="pointer-events-none" />
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={cancelDischarge}
-                                    className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
-                                    title="Atšaukti"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-                          ) : (
-                            <button 
-                                type="button"
-                                onClick={(e) => handleDischargeClick(e, bed.id)}
-                                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition flex items-center justify-center mx-auto"
-                                title="Išrašyti pacientą"
-                            >
-                                <LogOut size={16} />
-                            </button>
-                          )
+                            )}
+                          </div>
                        )}
                     </td>
                   </tr>
@@ -304,6 +413,21 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
         </tbody>
       </table>
     </div>
+
+    {/* MOBILE LIST VIEW */}
+    <div className="md:hidden space-y-2 pb-20">
+        {(Object.entries(groupedBeds) as [string, Bed[]][]).map(([sectionName, sectionBeds]) => (
+            <div key={sectionName}>
+                <div className="bg-slate-950 px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-800/50">
+                    {sectionName}
+                </div>
+                <div>
+                    {sectionBeds.map(bed => renderMobileCard(bed))}
+                </div>
+            </div>
+        ))}
+    </div>
+    </>
   );
 };
 
