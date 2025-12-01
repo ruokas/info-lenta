@@ -14,9 +14,9 @@ interface ShiftManagerViewProps {
   workShifts: WorkShift[];
   setWorkShifts: (shifts: WorkShift[]) => void;
   registrationLogs?: RegistrationLog[];
-  sections: string[]; // NEW PROP
-  specializations: StaffSpecialization[]; // NEW
-  skills: StaffSkill[]; // NEW
+  sections: string[]; 
+  specializations: StaffSpecialization[];
+  skills: StaffSkill[];
 }
 
 const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({ 
@@ -194,8 +194,21 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                  <div className="relative h-6 mb-2 min-w-[600px] border-b border-slate-700">{[0, 4, 8, 12, 16, 20, 24].map(h => (<div key={h} className="absolute text-[10px] text-slate-500 transform -translate-x-1/2" style={{ left: `${(h / 24) * 100}%` }}>{new Date(timelineStart.getTime() + h * 60 * 60 * 1000).getHours()}:00</div>))}<div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10" style={{ left: `${currentTimePos}%` }}></div></div>
                  <div className="space-y-4 min-w-[600px]">
                     {doctors.filter(d => d.role === 'Doctor' && d.isActive).map(doc => {
-                        const shift = workShifts.find(s => s.doctorId === doc.id); const stats = getDoctorStats(doc.id); const shiftStartPos = shift ? getPosition(shift.start) : 0; const shiftEndPos = shift ? getPosition(shift.end) : 0; const shiftWidth = Math.max(shiftEndPos - shiftStartPos, 1); const isEndingSoon = shift && (new Date(shift.end).getTime() - currentTime.getTime() > 0) && (new Date(shift.end).getTime() - currentTime.getTime() < 3600000);
+                        const shift = workShifts.find(s => s.doctorId === doc.id); 
+                        const stats = getDoctorStats(doc.id); 
                         const specName = specializations.find(s => s.id === doc.specializationId)?.name;
+                        
+                        let shiftStartPos = 0;
+                        let shiftWidth = 0;
+                        let isEndingSoon = false;
+
+                        if (shift) {
+                            const shiftStart = getPosition(shift.start);
+                            const shiftEnd = getPosition(shift.end);
+                            shiftStartPos = shiftStart;
+                            shiftWidth = Math.max(shiftEnd - shiftStart, 1);
+                            isEndingSoon = (new Date(shift.end).getTime() - currentTime.getTime() > 0) && (new Date(shift.end).getTime() - currentTime.getTime() < 3600000);
+                        }
                         
                         return (
                             <div key={doc.id} className="group relative bg-slate-800/30 rounded-lg p-3 border border-slate-800 hover:bg-slate-800 transition">
@@ -220,9 +233,39 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                             )}
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-3 xl:grid-cols-6 gap-1 opacity-20 group-hover:opacity-100 transition justify-end w-full max-w-xl">{!shift ? (SHIFT_BUTTONS.map((btn) => (<button key={btn.label} onClick={() => addShift(doc.id, btn.start, btn.end)} className={`px-2 py-1 text-[10px] rounded hover:opacity-80 border ${btn.color} whitespace-nowrap`}>+ {btn.label}</button>))) : (<button onClick={() => removeShift(shift.id)} className="p-1 text-red-400 hover:bg-red-900/30 rounded border border-transparent hover:border-red-900/50 flex items-center gap-1 col-span-3 xl:col-span-6 justify-center" title="Ištrinti pamainą"><Trash2 size={14}/><span className="text-xs">Atšaukti</span></button>)}</div>
+                                    <div className="grid grid-cols-3 xl:grid-cols-6 gap-1 opacity-20 group-hover:opacity-100 transition justify-end w-full max-w-xl">
+                                        {!shift ? (SHIFT_BUTTONS.map((btn) => (<button key={btn.label} onClick={() => addShift(doc.id, btn.start, btn.end)} className={`px-2 py-1 text-[10px] rounded hover:opacity-80 border ${btn.color} whitespace-nowrap`}>+ {btn.label}</button>))) : (<button onClick={() => removeShift(shift.id)} className="p-1 text-red-400 hover:bg-red-900/30 rounded border border-transparent hover:border-red-900/50 flex items-center gap-1 col-span-3 xl:col-span-6 justify-center" title="Ištrinti pamainą"><Trash2 size={14}/><span className="text-xs">Atšaukti</span></button>)}
+                                    </div>
                                 </div>
-                                <div className="relative h-8 bg-slate-900 rounded border border-slate-700 mt-2 overflow-hidden"><div className="absolute top-0 bottom-0 w-px bg-red-500/50 z-20" style={{ left: `${currentTimePos}%` }}></div>{[0, 20, 40, 60, 80].map(p => <div key={p} className="absolute top-0 bottom-0 w-px bg-slate-800" style={{ left: `${p}%` }}></div>)}{shift ? (<div className={`absolute top-1 bottom-1 rounded flex items-center justify-between px-2 text-[10px] font-bold text-white shadow-sm z-10 transition-all ${isEndingSoon ? 'bg-yellow-500/80 ring-2 ring-yellow-400' : shift.type === 'DAY' ? 'bg-blue-600' : 'bg-indigo-600'}`} style={{ left: `${shiftStartPos}%`, width: `${shiftWidth}%` }}><input type="time" className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center" value={new Date(shift.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} onChange={(e) => updateShiftTime(shift.id, 'start', e.target.value)} onClick={(e) => e.stopPropagation()}/>{isEndingSoon && <AlertTriangle size={12} className="animate-pulse text-white mx-auto"/><input type="time" className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center" value={new Date(shift.end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} onChange={(e) => updateShiftTime(shift.id, 'end', e.target.value)} onClick={(e) => e.stopPropagation()}/>}</div>) : (<div className="absolute inset-0 flex items-center justify-center text-xs text-slate-600 italic">Nėra pamainos</div>)}</div>
+                                <div className="relative h-8 bg-slate-900 rounded border border-slate-700 mt-2 overflow-hidden">
+                                    <div className="absolute top-0 bottom-0 w-px bg-red-500/50 z-20" style={{ left: `${currentTimePos}%` }}></div>
+                                    {[0, 20, 40, 60, 80].map(p => <div key={p} className="absolute top-0 bottom-0 w-px bg-slate-800" style={{ left: `${p}%` }}></div>)}
+                                    
+                                    {shift ? (
+                                        <div 
+                                            className={`absolute top-1 bottom-1 rounded flex items-center justify-between px-2 text-[10px] font-bold text-white shadow-sm z-10 transition-all ${isEndingSoon ? 'bg-yellow-500/80 ring-2 ring-yellow-400' : shift.type === 'DAY' ? 'bg-blue-600' : 'bg-indigo-600'}`} 
+                                            style={{ left: `${shiftStartPos}%`, width: `${shiftWidth}%` }}
+                                        >
+                                            <input 
+                                                type="time" 
+                                                className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center" 
+                                                value={new Date(shift.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} 
+                                                onChange={(e) => updateShiftTime(shift.id, 'start', e.target.value)} 
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                            {isEndingSoon && <AlertTriangle size={12} className="animate-pulse text-white mx-auto"/>}
+                                            <input 
+                                                type="time" 
+                                                className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center" 
+                                                value={new Date(shift.end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} 
+                                                onChange={(e) => updateShiftTime(shift.id, 'end', e.target.value)} 
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-600 italic">Nėra pamainos</div>
+                                    )}
+                                </div>
                             </div>
                         );
                     })}
