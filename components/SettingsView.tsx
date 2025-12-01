@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Staff, UserProfile, MedicationItem, Bed, MedicationProtocol, AppSettings, ActionType, PatientStatus, StaffSpecialization, StaffSkill } from '../types';
-import { RefreshCw, RotateCcw, Database, Save, CheckCircle, Edit2, X, Check, AlertTriangle, Pill, Search, Eye, EyeOff, ChevronDown, ChevronRight, Layers, Filter, FolderInput, FolderMinus, Trash2, Users, UserPlus, MapPin, UserX, UserCheck, LayoutTemplate, Square, BookOpen, Clock, Plus, Activity, Microscope, FileImage, HeartPulse, Waves, ClipboardList, GraduationCap, Award, Palette } from 'lucide-react';
+import { Staff, UserProfile, MedicationItem, Bed, MedicationProtocol, AppSettings, ActionType, PatientStatus, StaffSpecialization, StaffSkill, PatientLogEntry } from '../types';
+import { RefreshCw, RotateCcw, Database, Save, CheckCircle, Edit2, X, Check, AlertTriangle, Pill, Search, Eye, EyeOff, ChevronDown, ChevronRight, Layers, Filter, FolderInput, FolderMinus, Trash2, Users, UserPlus, MapPin, UserX, UserCheck, LayoutTemplate, Square, BookOpen, Clock, Plus, Activity, Microscope, FileImage, HeartPulse, Waves, ClipboardList, GraduationCap, Award, Palette, Phone, Timer, BarChart2 } from 'lucide-react';
 import { isSupabaseConfigured, updateSupabaseConfig, clearSupabaseConfig } from '../lib/supabaseClient';
 
 interface SettingsViewProps {
@@ -15,7 +15,6 @@ interface SettingsViewProps {
   setAutoRefresh: (enabled: boolean) => void;
   onResetData: () => void;
   currentUser: UserProfile;
-  // New props for Structure & Protocols
   beds: Bed[];
   setBeds: (beds: Bed[]) => void;
   sections: string[];
@@ -24,12 +23,12 @@ interface SettingsViewProps {
   setProtocols: (protocols: MedicationProtocol[]) => void;
   appSettings: AppSettings;
   setAppSettings: (settings: AppSettings) => void;
-  // NEW PROPS for Qualifications
   specializations: StaffSpecialization[];
   setSpecializations: (specs: StaffSpecialization[]) => void;
   skills: StaffSkill[];
   setSkills: (skills: StaffSkill[]) => void;
   initialTab?: string;
+  patientLogs?: PatientLogEntry[]; // New Prop
 }
 
 const SettingsView: React.FC<SettingsViewProps> = ({
@@ -45,7 +44,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   appSettings, setAppSettings,
   specializations, setSpecializations,
   skills, setSkills,
-  initialTab
+  initialTab,
+  patientLogs = []
 }) => {
   
   const [activeTab, setActiveTab] = useState<'general' | 'staff' | 'meds' | 'structure' | 'protocols'>('general');
@@ -56,26 +56,28 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       }
   }, [initialTab]);
 
-  // --- STAFF STATE ---
   const [activeStaffTab, setActiveStaffTab] = useState<'doctors' | 'nurses'>('doctors');
   const [newStaffName, setNewStaffName] = useState('');
   
-  // Extended Staff Editing State
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
   const [editStaffName, setEditStaffName] = useState('');
   const [editStaffSpec, setEditStaffSpec] = useState('');
+  const [editStaffPhone, setEditStaffPhone] = useState('');
   const [editStaffSkills, setEditStaffSkills] = useState<string[]>([]);
   
   const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
 
-  // --- QUALIFICATIONS STATE (NEW) ---
+  // --- QUALIFICATIONS STATE ---
   const [showQualManager, setShowQualManager] = useState(false);
   const [newSpecName, setNewSpecName] = useState('');
   const [newSpecType, setNewSpecType] = useState<'Doctor' | 'Nurse'>('Doctor');
   const [newSkillName, setNewSkillName] = useState('');
   const [newSkillColor, setNewSkillColor] = useState('bg-blue-500');
+  
+  // INLINE CONFIRMATION STATES
+  const [deletingSpecId, setDeletingSpecId] = useState<string | null>(null);
+  const [deletingSkillId, setDeletingSkillId] = useState<string | null>(null);
 
-  // --- MEDICATION STATE ---
   const [newMedName, setNewMedName] = useState('');
   const [newMedDose, setNewMedDose] = useState('');
   const [newMedRoute, setNewMedRoute] = useState('IV');
@@ -93,7 +95,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [tempCategoryName, setTempCategoryName] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
-  // --- STRUCTURE STATE ---
   const [selectedStructureSection, setSelectedStructureSection] = useState<string | null>(null);
   const [newSectionName, setNewSectionName] = useState('');
   const [newBedLabel, setNewBedLabel] = useState('');
@@ -102,12 +103,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingBedId, setEditingBedId] = useState<string | null>(null);
   const [editBedLabel, setEditBedLabel] = useState('');
 
-  // --- PROTOCOLS STATE ---
   const [newProtocolName, setNewProtocolName] = useState('');
   const [editingProtocolId, setEditingProtocolId] = useState<string | null>(null);
   const [deletingProtocolId, setDeletingProtocolId] = useState<string | null>(null);
-  const [tempProtocolName, setTempProtocolName] = useState('');
-  // For adding items to a protocol (Med or Action)
   const [newItemType, setNewItemType] = useState<'MED' | 'ACTION'>('MED');
   const [newProtoMedName, setNewProtoMedName] = useState('');
   const [newProtoMedDose, setNewProtoMedDose] = useState('');
@@ -115,14 +113,38 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [newProtoActionType, setNewProtoActionType] = useState<ActionType>('LABS');
   const [newProtoActionName, setNewProtoActionName] = useState('');
 
-  // Supabase Config State
   const [sbUrl, setSbUrl] = useState(localStorage.getItem('sb_url') || '');
   const [sbKey, setSbKey] = useState(localStorage.getItem('sb_key') || '');
   const isSyncConfigured = isSupabaseConfigured();
 
   const isAdmin = currentUser.role === 'Admin';
 
-  // --- Staff Logic ---
+  // --- STATS HELPER ---
+  const calculateStaffStats = (staffName: string) => {
+      const logs = patientLogs.filter(l => l.treatedByDoctorName === staffName);
+      if (logs.length === 0) return { totalPatients: 0, avgTime: '-' };
+
+      let totalMins = 0;
+      logs.forEach(l => {
+          if (l.totalDuration) {
+              const parts = l.totalDuration.split(' ');
+              parts.forEach(p => {
+                  if (p.includes('h')) totalMins += parseInt(p) * 60;
+                  if (p.includes('m')) totalMins += parseInt(p);
+              });
+          }
+      });
+
+      const avgMins = Math.round(totalMins / logs.length);
+      const h = Math.floor(avgMins / 60);
+      const m = avgMins % 60;
+
+      return {
+          totalPatients: logs.length,
+          avgTime: `${h}h ${m}m`
+      };
+  };
+
   const handleAddStaff = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStaffName.trim()) return;
@@ -142,6 +164,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setEditingStaffId(staff.id); 
       setEditStaffName(staff.name);
       setEditStaffSpec(staff.specializationId || '');
+      setEditStaffPhone(staff.phone || '');
       setEditStaffSkills(staff.skillIds || []);
   };
   const saveEditStaff = () => {
@@ -150,6 +173,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           ...s, 
           name: editStaffName.trim(),
           specializationId: editStaffSpec || undefined,
+          phone: editStaffPhone.trim() || undefined,
           skillIds: editStaffSkills
       } : s;
 
@@ -172,25 +196,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setDeletingStaffId(null);
   };
 
-  // --- Qualifications Logic ---
   const handleAddSpecialization = () => {
       if (!newSpecName.trim()) return;
       setSpecializations([...specializations, { id: `spec-${Date.now()}`, name: newSpecName.trim(), isDoctor: newSpecType === 'Doctor' }]);
       setNewSpecName('');
   };
-  const handleDeleteSpecialization = (id: string) => {
-      if (window.confirm('Ištrinti specializaciją?')) setSpecializations(specializations.filter(s => s.id !== id));
+  const executeDeleteSpec = (id: string) => {
+      setSpecializations(specializations.filter(s => s.id !== id));
+      setDeletingSpecId(null);
   };
+  
   const handleAddSkill = () => {
       if (!newSkillName.trim()) return;
       setSkills([...skills, { id: `skill-${Date.now()}`, label: newSkillName.trim(), color: newSkillColor }]);
       setNewSkillName('');
   };
-  const handleDeleteSkill = (id: string) => {
-      if (window.confirm('Ištrinti įgūdį?')) setSkills(skills.filter(s => s.id !== id));
+  const executeDeleteSkill = (id: string) => {
+      setSkills(skills.filter(s => s.id !== id));
+      setDeletingSkillId(null);
   };
 
-  // --- Medication Logic ---
   const handleAddMedication = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMedName.trim()) return;
@@ -250,7 +275,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   }, [filteredMeds]);
   const sortedCategories = Object.keys(groupedMeds).sort((a,b) => { if (a === 'Kiti') return 1; if (b === 'Kiti') return -1; return a.localeCompare(b); });
 
-  // --- STRUCTURE LOGIC ---
   const handleAddSection = () => {
       if (!newSectionName.trim() || sections.includes(newSectionName.trim())) return;
       setSections([...sections, newSectionName.trim()]);
@@ -261,18 +285,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       if (!editingSectionName || !tempSectionName.trim() || sections.includes(tempSectionName.trim())) return;
       const oldName = editingSectionName;
       const newName = tempSectionName.trim();
-      
-      // Update Sections List
       setSections(sections.map(s => s === oldName ? newName : s));
-      
-      // Update Beds
-      const updatedBeds = beds.map(b => b.section === oldName ? { ...b, section: newName } : b);
-      setBeds(updatedBeds);
-      
-      // Update Nurses Assignment
-      const updatedNurses = nurses.map(n => n.assignedSection === oldName ? { ...n, assignedSection: newName } : n);
-      setNurses(updatedNurses);
-      
+      setBeds(beds.map(b => b.section === oldName ? { ...b, section: newName } : b));
+      setNurses(nurses.map(n => n.assignedSection === oldName ? { ...n, assignedSection: newName } : n));
       setEditingSectionName(null);
       if (selectedStructureSection === oldName) setSelectedStructureSection(newName);
   };
@@ -314,7 +329,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       setEditingBedId(null);
   };
 
-  // --- PROTOCOLS LOGIC ---
   const handleAddProtocol = () => {
       if (!newProtocolName.trim()) return;
       const newProto: MedicationProtocol = {
@@ -353,7 +367,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           }
           return p;
       }));
-      // Reset inputs
       setNewProtoMedName(''); setNewProtoActionName('');
   };
 
@@ -450,24 +463,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 {/* Staff List */}
                 <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto custom-scrollbar p-1">
-                        {(activeStaffTab === 'doctors' ? doctors : nurses).map(staff => (
+                        {(activeStaffTab === 'doctors' ? doctors : nurses).map(staff => {
+                            const stats = activeStaffTab === 'doctors' ? calculateStaffStats(staff.name) : null;
+                            return (
                             <div key={staff.id} className={`bg-slate-800 border rounded-lg p-3 group transition ${staff.isDisabled ? 'border-red-900/30 opacity-60' : 'border-slate-700 hover:border-slate-600'}`}>
                             {editingStaffId === staff.id ? (
-                                <div className="space-y-3 p-1">
+                                <div className="space-y-4 p-2 bg-slate-950/30 rounded">
+                                    {/* Header / Name Edit */}
                                     <div className="flex gap-2">
-                                        <input value={editStaffName} onChange={(e) => setEditStaffName(e.target.value)} className="flex-1 bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none text-white" autoFocus />
-                                        <button onClick={saveEditStaff} className="p-1.5 bg-green-600 text-white rounded font-bold"><Check size={16}/></button>
-                                        <button onClick={() => setEditingStaffId(null)} className="p-1.5 bg-red-600 text-white rounded"><X size={16}/></button>
+                                        <input value={editStaffName} onChange={(e) => setEditStaffName(e.target.value)} className="flex-1 bg-slate-900 border border-blue-500 rounded px-3 py-2 text-sm outline-none text-white font-medium" autoFocus />
+                                        <button onClick={saveEditStaff} className="px-3 bg-green-600 hover:bg-green-700 text-white rounded font-bold"><Check size={18}/></button>
+                                        <button onClick={() => setEditingStaffId(null)} className="px-3 bg-slate-700 hover:bg-slate-600 text-white rounded"><X size={18}/></button>
                                     </div>
                                     
-                                    {/* Edit Specialization */}
+                                    {/* Extended Fields Grid */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-[10px] text-slate-500 uppercase mb-1">Specializacija</label>
+                                            <label className="block text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><GraduationCap size={10}/> Specializacija</label>
                                             <select 
                                                 value={editStaffSpec} 
                                                 onChange={(e) => setEditStaffSpec(e.target.value)} 
-                                                className="w-full bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1 outline-none"
+                                                className="w-full bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded px-2 py-2 outline-none"
                                             >
                                                 <option value="">-- Nėra --</option>
                                                 {specializations.filter(s => s.isDoctor === (staff.role === 'Doctor')).map(s => (
@@ -476,23 +492,48 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-slate-500 uppercase mb-1">Įgūdžiai (Badge)</label>
-                                            <div className="flex flex-wrap gap-1">
-                                                {skills.map(skill => {
-                                                    const isSelected = editStaffSkills.includes(skill.id);
-                                                    return (
-                                                        <button 
-                                                            key={skill.id}
-                                                            onClick={() => toggleStaffSkill(skill.id)}
-                                                            className={`text-[10px] px-2 py-0.5 rounded border ${isSelected ? `${skill.color} text-white border-transparent` : 'bg-slate-900 border-slate-700 text-slate-400'}`}
-                                                        >
-                                                            {skill.label}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
+                                            <label className="block text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Phone size={10}/> Telefonas / DECT</label>
+                                            <input 
+                                                value={editStaffPhone} 
+                                                onChange={(e) => setEditStaffPhone(e.target.value)} 
+                                                placeholder="Pvz. 1234"
+                                                className="w-full bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded px-2 py-2 outline-none placeholder:text-slate-600"
+                                            />
                                         </div>
                                     </div>
+
+                                    {/* Skills Section */}
+                                    <div>
+                                        <label className="block text-[10px] text-slate-500 uppercase mb-1 flex items-center gap-1"><Palette size={10}/> Įgūdžiai (Badges)</label>
+                                        <div className="flex flex-wrap gap-1.5 p-2 bg-slate-900 border border-slate-800 rounded-lg">
+                                            {skills.map(skill => {
+                                                const isSelected = editStaffSkills.includes(skill.id);
+                                                return (
+                                                    <button 
+                                                        key={skill.id}
+                                                        onClick={() => toggleStaffSkill(skill.id)}
+                                                        className={`text-[10px] px-2 py-1 rounded border transition-all ${isSelected ? `${skill.color} text-white border-transparent` : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-slate-200'}`}
+                                                    >
+                                                        {skill.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Performance Stats (Read Only) */}
+                                    {stats && (
+                                        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/50">
+                                            <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between">
+                                                <span className="text-[10px] text-slate-500 uppercase">Pacientų istorijoje</span>
+                                                <span className="text-xs font-bold text-blue-400">{stats.totalPatients}</span>
+                                            </div>
+                                            <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between">
+                                                <span className="text-[10px] text-slate-500 uppercase">Vid. laikas</span>
+                                                <span className="text-xs font-bold text-emerald-400">{stats.avgTime}</span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : deletingStaffId === staff.id ? (
                                 <div className="flex items-center justify-between animate-in fade-in zoom-in-95 duration-200">
@@ -503,7 +544,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                     </div>
                                 </div>
                             ) : (
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between cursor-pointer" onClick={() => startEditingStaff(staff)}>
                                     <div className="flex items-center gap-3 overflow-hidden">
                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${staff.isDisabled ? 'bg-slate-700 text-slate-500' : activeStaffTab === 'doctors' ? 'bg-blue-900/50 text-blue-300' : 'bg-emerald-900/50 text-emerald-300'}`}>{staff.name.substring(0, 2).toUpperCase()}</div>
                                         <div>
@@ -515,17 +556,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                                     </span>
                                                 )}
                                             </div>
-                                            {staff.skillIds && staff.skillIds.length > 0 && (
-                                                <div className="flex gap-1 mt-1">
-                                                    {staff.skillIds.map(skId => {
-                                                        const sk = skills.find(s => s.id === skId);
-                                                        return sk ? <div key={skId} className={`w-2 h-2 rounded-full ${sk.color}`} title={sk.label}></div> : null;
-                                                    })}
-                                                </div>
-                                            )}
+                                            <div className="flex gap-2 items-center">
+                                                {staff.phone && <span className="text-[10px] text-slate-500 flex items-center gap-0.5"><Phone size={8}/> {staff.phone}</span>}
+                                                {staff.skillIds && staff.skillIds.length > 0 && (
+                                                    <div className="flex gap-1">
+                                                        {staff.skillIds.map(skId => {
+                                                            const sk = skills.find(s => s.id === skId);
+                                                            return sk ? <div key={skId} className={`w-1.5 h-1.5 rounded-full ${sk.color}`} title={sk.label}></div> : null;
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition" onClick={e => e.stopPropagation()}>
                                         <button onClick={() => toggleStaffDisabled(staff)} className={`p-1.5 rounded hover:bg-slate-700 ${staff.isDisabled ? 'text-green-500 hover:text-green-400' : 'text-slate-500 hover:text-amber-400'}`}>{staff.isDisabled ? <UserCheck size={14}/> : <UserX size={14}/>}</button>
                                         <button onClick={() => startEditingStaff(staff)} className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700 rounded"><Edit2 size={14}/></button>
                                         <button onClick={() => setDeletingStaffId(staff.id)} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded"><Trash2 size={14}/></button>
@@ -533,7 +577,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                 </div>
                             )}
                             </div>
-                        ))}
+                        );})}
                 </div>
            </div>
 
@@ -552,7 +596,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                             {specializations.map(spec => (
                                 <div key={spec.id} className="flex justify-between items-center text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 border border-slate-700">
                                     <span>{spec.name} <span className="opacity-50">({spec.isDoctor ? 'Gyd' : 'Slaug'})</span></span>
-                                    {showQualManager && <button onClick={() => handleDeleteSpecialization(spec.id)} className="text-slate-500 hover:text-red-400"><X size={12}/></button>}
+                                    {showQualManager && (
+                                        deletingSpecId === spec.id ? (
+                                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                                <button onClick={() => executeDeleteSpec(spec.id)} type="button" className="text-[9px] bg-red-600 text-white px-1.5 rounded font-bold hover:bg-red-700">TRINTI?</button>
+                                                <button onClick={() => setDeletingSpecId(null)} type="button" className="text-slate-400 hover:text-white px-1"><X size={10}/></button>
+                                            </div>
+                                        ) : (
+                                            <button onClick={() => setDeletingSpecId(spec.id)} type="button" className="text-slate-500 hover:text-red-400 p-1"><X size={12}/></button>
+                                        )
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -572,9 +625,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                         <h4 className="text-xs uppercase font-bold text-slate-500 mb-2 flex items-center gap-1"><Palette size={12}/> Įgūdžiai / Badges</h4>
                         <div className="flex flex-wrap gap-2 mb-2">
                             {skills.map(skill => (
-                                <span key={skill.id} className={`text-[10px] px-2 py-0.5 rounded text-white ${skill.color} flex items-center gap-1`}>
-                                    {skill.label}
-                                    {showQualManager && <button onClick={() => handleDeleteSkill(skill.id)} className="hover:text-black/50"><X size={10}/></button>}
+                                <span 
+                                    key={skill.id} 
+                                    className={`text-[10px] px-2 py-0.5 rounded text-white flex items-center gap-1 transition-all ${deletingSkillId === skill.id ? 'bg-red-600' : skill.color} ${deletingSkillId === skill.id ? 'cursor-pointer hover:bg-red-700' : ''}`}
+                                    onClick={deletingSkillId === skill.id ? () => executeDeleteSkill(skill.id) : undefined}
+                                >
+                                    {deletingSkillId === skill.id ? 'Trinti?' : skill.label}
+                                    {showQualManager && (
+                                        deletingSkillId === skill.id ? (
+                                            <button onClick={(e) => { e.stopPropagation(); setDeletingSkillId(null); }} type="button" className="text-white/70 hover:text-white ml-1"><X size={10}/></button>
+                                        ) : (
+                                            <button onClick={() => setDeletingSkillId(skill.id)} type="button" className="hover:text-black/50 ml-1"><X size={10}/></button>
+                                        )
+                                    )}
                                 </span>
                             ))}
                         </div>

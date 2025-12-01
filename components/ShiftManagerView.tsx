@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Staff, Bed, PatientLogEntry, AssignmentLog, WorkShift, PatientStatus, RegistrationLog, StaffSpecialization, StaffSkill } from '../types';
-import { Users, BarChart2, CheckCircle, Clock, AlertTriangle, Moon, Sun, Briefcase, Plus, X, CalendarClock, Trash2, Edit2, Check, UserPlus, MoreHorizontal, MapPin, ClipboardList, ChevronDown } from 'lucide-react';
+import { Briefcase, Plus, X, CalendarClock, Trash2, UserPlus, MapPin, ClipboardList, AlertTriangle, Search, ChevronDown } from 'lucide-react';
 
 interface ShiftManagerViewProps {
   doctors: Staff[];
@@ -19,7 +19,6 @@ interface ShiftManagerViewProps {
   skills: StaffSkill[];
 }
 
-// Moved constants outside component to prevent recreation on re-render and improve readability
 const SHIFT_BUTTONS = [
   { label: '08-20', start: 8, end: 20, color: 'bg-blue-900/30 text-blue-300 border-blue-900/50' },
   { label: '20-08', start: 20, end: 8, color: 'bg-indigo-900/30 text-indigo-300 border-indigo-900/50' },
@@ -42,16 +41,45 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Staff Management State
+  const [nurseSearchQuery, setNurseSearchQuery] = useState('');
+  const [showNurseDropdown, setShowNurseDropdown] = useState(false);
+  const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+
+  // Fallback selection states for mobile/direct access if needed
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [selectedNurseId, setSelectedNurseId] = useState('');
 
+  // Refs for click outside handling
+  const nurseDropdownRef = useRef<HTMLDivElement>(null);
+  const doctorDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
+    
+    const handleClickOutside = (event: MouseEvent) => {
+        if (nurseDropdownRef.current && !nurseDropdownRef.current.contains(event.target as Node)) {
+            setShowNurseDropdown(false);
+        }
+        if (doctorDropdownRef.current && !doctorDropdownRef.current.contains(event.target as Node)) {
+            setShowDoctorDropdown(false);
+        }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+        clearInterval(timer);
+        document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
-  const availableDoctors = useMemo(() => doctors.filter(d => !d.isActive && !d.isDisabled), [doctors]);
-  const availableNurses = useMemo(() => nurses.filter(n => !n.isActive && !n.isDisabled), [nurses]);
+  const availableDoctors = useMemo(() => 
+      doctors.filter(d => !d.isActive && !d.isDisabled && d.name.toLowerCase().includes(doctorSearchQuery.toLowerCase())), 
+  [doctors, doctorSearchQuery]);
+
+  const availableNurses = useMemo(() => 
+      nurses.filter(n => !n.isActive && !n.isDisabled && n.name.toLowerCase().includes(nurseSearchQuery.toLowerCase())), 
+  [nurses, nurseSearchQuery]);
 
   const getTimelineRange = () => {
     const start = new Date();
@@ -148,16 +176,29 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
       setNurses(nurses.map(n => n.id === nurseId ? { ...n, assignedSection: section } : n)); 
   };
 
-  const handleAddDoctorToShift = () => { 
+  const handleSelectDoctor = (docId: string) => {
+      setDoctors(doctors.map(d => d.id === docId ? { ...d, isActive: true } : d));
+      setDoctorSearchQuery('');
+      setShowDoctorDropdown(false);
+  };
+
+  const handleSelectNurse = (nurseId: string) => {
+      setNurses(nurses.map(n => n.id === nurseId ? { ...n, isActive: true } : n));
+      setNurseSearchQuery('');
+      setShowNurseDropdown(false);
+  };
+
+  // Mobile handlers utilizing the native select
+  const handleAddDoctorToShiftMobile = () => { 
       if (!selectedDoctorId) return; 
       setDoctors(doctors.map(d => d.id === selectedDoctorId ? { ...d, isActive: true } : d)); 
       setSelectedDoctorId(''); 
   };
 
-  const handleAddNurseToShift = () => { 
-      if (!selectedNurseId) return; 
-      setNurses(nurses.map(n => n.id === selectedNurseId ? { ...n, isActive: true } : n)); 
-      setSelectedNurseId(''); 
+  const handleAddNurseToShift = () => {
+      if (!selectedNurseId) return;
+      setNurses(nurses.map(n => n.id === selectedNurseId ? { ...n, isActive: true } : n));
+      setSelectedNurseId('');
   };
 
   const removeStaffFromShift = (id: string, type: 'Doctor' | 'Nurse') => {
@@ -168,7 +209,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
     }
   };
 
-  // Helper to check for ending shift cleanly
   const checkEndingSoon = (shift: WorkShift): boolean => {
       const now = currentTime.getTime();
       const end = new Date(shift.end).getTime();
@@ -208,12 +248,39 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                   </div>
               </div>
               <div className="p-3 border-b border-slate-800/50 bg-slate-900/50">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                      <select value={selectedNurseId} onChange={(e) => setSelectedNurseId(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-2 text-sm md:text-xs outline-none focus:border-emerald-500">
-                          <option value="">Pasirinkti iš banko...</option>
-                          {availableNurses.map(n => (<option key={n.id} value={n.id}>{n.name} {n.assignedSection ? `(${n.assignedSection})` : ''}</option>))}
-                      </select>
-                      <button onClick={handleAddNurseToShift} disabled={!selectedNurseId} className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50 flex items-center justify-center"><Plus size={16} /></button>
+                  {/* Searchable Nurse Input */}
+                  <div className="relative" ref={nurseDropdownRef}>
+                      <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 focus-within:border-emerald-500 transition-colors">
+                          <Search size={16} className="text-slate-500 mr-2 shrink-0"/>
+                          <input 
+                              type="text"
+                              value={nurseSearchQuery}
+                              onChange={(e) => { setNurseSearchQuery(e.target.value); setShowNurseDropdown(true); }}
+                              onFocus={() => setShowNurseDropdown(true)}
+                              placeholder="Ieškoti slaugytojos..."
+                              className="bg-transparent text-slate-200 text-sm md:text-xs outline-none w-full placeholder:text-slate-500"
+                          />
+                          {nurseSearchQuery && <button onClick={() => { setNurseSearchQuery(''); setShowNurseDropdown(false); }}><X size={14} className="text-slate-500 hover:text-slate-300"/></button>}
+                      </div>
+                      
+                      {showNurseDropdown && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-20 max-h-60 overflow-y-auto custom-scrollbar">
+                              {availableNurses.length > 0 ? (
+                                  availableNurses.map(n => (
+                                      <button 
+                                          key={n.id}
+                                          onClick={() => handleSelectNurse(n.id)}
+                                          className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white border-b border-slate-700/50 last:border-0 flex items-center justify-between"
+                                      >
+                                          <span>{n.name}</span>
+                                          <Plus size={14} className="opacity-0 group-hover:opacity-100 text-emerald-500"/>
+                                      </button>
+                                  ))
+                              ) : (
+                                  <div className="px-3 py-2 text-xs text-slate-500 italic text-center">Nerasta slaugytojų</div>
+                              )}
+                          </div>
+                      )}
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1 italic hidden sm:block">Nerandate sąraše? Pridėkite per "Nustatymai -> Personalo Bankas".</p>
               </div>
@@ -278,13 +345,37 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
               
               {/* DESKTOP VIEW: Timeline */}
               <div className="hidden lg:block p-4 overflow-x-auto">
-                 <div className="flex items-center gap-2 mb-4 bg-slate-800/30 p-2 rounded border border-slate-800 max-w-md">
+                 <div className="flex items-center gap-2 mb-4 bg-slate-800/30 p-2 rounded border border-slate-800 max-w-md relative" ref={doctorDropdownRef}>
                      <span className="text-xs font-bold text-slate-500 uppercase px-2"><UserPlus size={16}/></span>
-                     <select value={selectedDoctorId} onChange={(e) => setSelectedDoctorId(e.target.value)} className="flex-1 bg-transparent border-none text-slate-200 text-sm outline-none">
-                         <option value="" className="bg-slate-900">Pasirinkti gydytoją iš banko...</option>
-                         {availableDoctors.map(d => (<option key={d.id} value={d.id} className="bg-slate-900">{d.name}</option>))}
-                     </select>
-                     <button onClick={handleAddDoctorToShift} disabled={!selectedDoctorId} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold disabled:opacity-50">PRIDĖTI</button>
+                     
+                     <div className="flex-1 relative">
+                         <input 
+                             type="text"
+                             value={doctorSearchQuery}
+                             onChange={(e) => { setDoctorSearchQuery(e.target.value); setShowDoctorDropdown(true); }}
+                             onFocus={() => setShowDoctorDropdown(true)}
+                             placeholder="Pasirinkti gydytoją..."
+                             className="w-full bg-transparent text-slate-200 text-sm outline-none placeholder:text-slate-500"
+                         />
+                         {showDoctorDropdown && (
+                             <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-20 max-h-60 overflow-y-auto custom-scrollbar">
+                                 {availableDoctors.length > 0 ? (
+                                     availableDoctors.map(d => (
+                                         <button 
+                                             key={d.id}
+                                             onClick={() => handleSelectDoctor(d.id)}
+                                             className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white border-b border-slate-800 last:border-0"
+                                         >
+                                             {d.name}
+                                         </button>
+                                     ))
+                                 ) : (
+                                     <div className="px-3 py-2 text-xs text-slate-500 italic text-center">Nerasta gydytojų</div>
+                                 )}
+                             </div>
+                         )}
+                     </div>
+                     <ChevronDown size={14} className="text-slate-500 mr-2"/>
                  </div>
                  
                  <div className="relative h-6 mb-2 min-w-[600px] border-b border-slate-700">
@@ -386,10 +477,9 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                  <div className="flex flex-col gap-2 mb-4 bg-slate-800/30 p-3 rounded-lg border border-slate-800">
                     <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><UserPlus size={16}/> Pridėti gydytoją</span>
                     <div className="flex gap-2">
-                        <select value={selectedDoctorId} onChange={(e) => setSelectedDoctorId(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-2 text-sm outline-none">
-                            <option value="">Pasirinkti iš banko...</option>{availableDoctors.map(d => (<option key={d.id} value={d.id} className="bg-slate-900">{d.name}</option>))}
+                        <select value={selectedDoctorId} onChange={(e) => handleAddDoctorToShiftMobile()} className="flex-1 bg-slate-900 border border-slate-700 text-slate-200 rounded px-2 py-2 text-sm outline-none">
+                            <option value="">Pasirinkti iš banko...</option>{availableDoctors.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}
                         </select>
-                        <button onClick={handleAddDoctorToShift} disabled={!selectedDoctorId} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold disabled:opacity-50">OK</button>
                     </div>
                  </div>
                  

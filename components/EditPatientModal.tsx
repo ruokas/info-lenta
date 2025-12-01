@@ -1,19 +1,21 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem, WorkShift, Vitals, MedicationProtocol } from '../types';
-import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles, Wind, Thermometer, Brain } from 'lucide-react';
+import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles, Wind, Thermometer, Brain, MapPin, Users } from 'lucide-react';
+import { STATUS_COLORS } from '../constants';
 
 interface EditPatientModalProps {
   bed: Bed;
   beds: Bed[]; 
   doctors: Staff[];
+  nurses: Staff[];
   currentUser: UserProfile; 
   medicationBank: MedicationItem[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedBed: Bed) => void;
   workShifts?: WorkShift[];
-  protocols: MedicationProtocol[]; // NEW PROP
+  protocols: MedicationProtocol[];
 }
 
 // Common abbreviations mapping
@@ -30,7 +32,7 @@ const DRUG_SYNONYMS: Record<string, string[]> = {
   'Glucose': ['Gliukozė'],
 };
 
-const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors, currentUser, medicationBank = [], isOpen, onClose, onSave, workShifts, protocols = [] }) => {
+const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors, nurses, currentUser, medicationBank = [], isOpen, onClose, onSave, workShifts, protocols = [] }) => {
   const [formData, setFormData] = useState<Bed>(bed);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
@@ -58,6 +60,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   const activeDoctors = useMemo(() => {
     return doctors.filter(d => d.role === 'Doctor' && d.isActive !== false);
   }, [doctors]);
+
+  const sectionNurses = useMemo(() => {
+    return nurses.filter(n => n.assignedSection === formData.section && !n.isDisabled && n.isActive);
+  }, [nurses, formData.section]);
 
   const quickPickMeds = useMemo(() => {
     if (!medicationBank || !Array.isArray(medicationBank)) return [];
@@ -116,7 +122,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   const handlePatientChange = (field: string, value: any) => { if (!formData.patient) return; setFormData(prev => ({ ...prev, patient: prev.patient ? { ...prev.patient, [field]: value } : undefined })); };
   const handleVitalsChange = (field: string, value: any) => { if (!formData.patient) return; const numValue = (field === 'onOxygen' || field === 'consciousness') ? value : (value === '' ? undefined : Number(value)); setFormData(prev => ({ ...prev, patient: { ...prev.patient!, vitals: { ...prev.patient!.vitals, [field]: numValue, lastUpdated: new Date().toISOString() } } })); };
 
-  // NEWS2 Calculation (Simplified for brevity as logic exists in previous versions)
+  // NEWS2 Calculation
   const calculateNEWS2 = (vitals?: Vitals) => {
     if (!vitals) return { score: 0, level: 'N/A' };
     let score = 0;
@@ -138,8 +144,6 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   };
 
   const calculateArpaSuggestions = () => {
-    // ARPA Logic (Abbreviated, assumes same logic as previous implementation)
-    // ... (Use existing logic or placeholder)
     if (activeDoctors.length > 0) {
         setSuggestedDoctor({ id: activeDoctors[0].id, name: activeDoctors[0].name, score: 5.5 });
         handleChange('assignedDoctorId', activeDoctors[0].id);
@@ -173,7 +177,6 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     setNewMedName(''); setNewMedDose(''); setShowSuggestions(false);
   };
 
-  // UPDATED: Handle Protocol Application (Meds + Actions)
   const applyProtocol = (protocol: MedicationProtocol) => {
     if (!formData.patient) return;
     const reminder = calculateReminderTime();
@@ -254,7 +257,41 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
         <div className="overflow-y-auto custom-scrollbar p-4 md:p-6 flex-1 safe-area-pb">
           {!formData.patient ? (
-             <div className="flex flex-col items-center justify-center h-full"><button type="button" onClick={handleAdmit} className="flex gap-2 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-lg animate-in fade-in slide-in-from-bottom-4 duration-500"><UserPlus size={24} /> Registruoti pacientą</button></div>
+             <div className="flex flex-col h-full">
+                {/* Info Card */}
+                <div className="flex-1 flex flex-col items-center justify-center space-y-8 p-4 md:p-8">
+                    
+                    <div className="text-center space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-slate-800 border-4 border-slate-700 mb-4 shadow-xl">
+                            <span className="text-4xl font-bold text-slate-100">{formData.label}</span>
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-200">{formData.section}</h2>
+                        <div className="flex items-center justify-center gap-2 text-slate-400">
+                            <Users size={16} />
+                            <span>{sectionNurses.length > 0 ? sectionNurses.map(n => n.name).join(', ') : 'Nepriskirta'}</span>
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 w-full max-w-md space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-500 delay-100 shadow-sm">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                            <span className="text-slate-500 uppercase text-xs font-bold">Statusas</span>
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${STATUS_COLORS[formData.status] || 'bg-slate-800 text-slate-400'}`}>
+                                {formData.status}
+                            </span>
+                        </div>
+                        {formData.comment ? (
+                            <div className="space-y-1">
+                                <span className="text-slate-500 uppercase text-xs font-bold">Komentaras</span>
+                                <p className="text-slate-300 text-sm italic">"{formData.comment}"</p>
+                            </div>
+                        ) : (
+                            <div className="text-center text-slate-600 text-xs italic py-2">Komentarų nėra</div>
+                        )}
+                    </div>
+
+                    <button type="button" onClick={handleAdmit} className="flex gap-2 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-lg animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 shadow-lg shadow-blue-900/30 transition-transform hover:scale-105 active:scale-95"><UserPlus size={24} /> Registruoti pacientą</button>
+                </div>
+             </div>
           ) : (
              <form onSubmit={handleSubmit} className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {activeTab === 'info' && (
