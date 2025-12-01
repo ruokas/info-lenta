@@ -14,10 +14,20 @@ interface ShiftManagerViewProps {
   workShifts: WorkShift[];
   setWorkShifts: (shifts: WorkShift[]) => void;
   registrationLogs?: RegistrationLog[];
-  sections: string[]; 
+  sections: string[];
   specializations: StaffSpecialization[];
   skills: StaffSkill[];
 }
+
+// Moved constants outside component to prevent recreation on re-render and improve readability
+const SHIFT_BUTTONS = [
+  { label: '08-20', start: 8, end: 20, color: 'bg-blue-900/30 text-blue-300 border-blue-900/50' },
+  { label: '20-08', start: 20, end: 8, color: 'bg-indigo-900/30 text-indigo-300 border-indigo-900/50' },
+  { label: '08-08', start: 8, end: 8, color: 'bg-purple-900/30 text-purple-300 border-purple-900/50' },
+  { label: '09-21', start: 9, end: 21, color: 'bg-cyan-900/30 text-cyan-300 border-cyan-900/50' },
+  { label: '09-09', start: 9, end: 9, color: 'bg-teal-900/30 text-teal-300 border-teal-900/50' },
+  { label: '10-22', start: 10, end: 22, color: 'bg-emerald-900/30 text-emerald-300 border-emerald-900/50' },
+];
 
 const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({ 
   doctors, setDoctors, 
@@ -34,7 +44,6 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   // Staff Management State
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [selectedNurseId, setSelectedNurseId] = useState('');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -60,69 +69,131 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   const addShift = (doctorId: string, startHour: number, endHour: number) => {
     const start = new Date(timelineStart);
     start.setHours(startHour, 0, 0, 0);
+    
     const end = new Date(start);
-    if (endHour < startHour) { end.setDate(end.getDate() + 1); end.setHours(endHour, 0, 0, 0); } 
-    else if (endHour === startHour) { end.setDate(end.getDate() + 1); end.setHours(endHour, 0, 0, 0); } 
-    else { end.setHours(endHour, 0, 0, 0); }
+    if (endHour < startHour) { 
+        end.setDate(end.getDate() + 1); 
+        end.setHours(endHour, 0, 0, 0); 
+    } else if (endHour === startHour) { 
+        end.setDate(end.getDate() + 1); 
+        end.setHours(endHour, 0, 0, 0); 
+    } else { 
+        end.setHours(endHour, 0, 0, 0); 
+    }
+    
     const type = (startHour >= 20 || startHour < 6) ? 'NIGHT' : 'DAY';
-    const newShift: WorkShift = { id: `shift-${Date.now()}-${Math.random()}`, doctorId, start: start.toISOString(), end: end.toISOString(), type };
+    const newShift: WorkShift = { 
+        id: `shift-${Date.now()}-${Math.random()}`, 
+        doctorId, 
+        start: start.toISOString(), 
+        end: end.toISOString(), 
+        type 
+    };
+    
     const filtered = workShifts.filter(s => s.doctorId !== doctorId);
     setWorkShifts([...filtered, newShift]);
   };
 
-  const removeShift = (shiftId: string) => { setWorkShifts(workShifts.filter(s => s.id !== shiftId)); };
+  const removeShift = (shiftId: string) => { 
+      setWorkShifts(workShifts.filter(s => s.id !== shiftId)); 
+  };
+
   const updateShiftTime = (shiftId: string, field: 'start' | 'end', value: string) => {
      const [h, m] = value.split(':').map(Number);
      setWorkShifts(workShifts.map(s => {
-         if (s.id === shiftId) { const d = new Date(field === 'start' ? s.start : s.end); d.setHours(h, m, 0, 0); return { ...s, [field]: d.toISOString() }; }
+         if (s.id === shiftId) { 
+             const d = new Date(field === 'start' ? s.start : s.end); 
+             d.setHours(h, m, 0, 0); 
+             return { ...s, [field]: d.toISOString() }; 
+         }
          return s;
      }));
   };
 
   const getPosition = (isoTime: string) => {
-      const t = new Date(isoTime).getTime(); const start = timelineStart.getTime(); const end = timelineEnd.getTime();
+      const t = new Date(isoTime).getTime(); 
+      const start = timelineStart.getTime(); 
+      const end = timelineEnd.getTime();
       return Math.max(0, Math.min(100, ((t - start) / (end - start)) * 100));
   };
+  
   const currentTimePos = getPosition(currentTime.toISOString());
 
   const getDoctorStats = (docId: string) => {
     const activeCount = beds.filter(b => b.assignedDoctorId === docId && b.status !== PatientStatus.EMPTY).length;
     const heavyCount = beds.filter(b => b.assignedDoctorId === docId && b.patient && b.patient.triageCategory <= 2).length;
-    const dischargedCount = patientLogs.filter(l => l.treatedByDoctorName === doctors.find(d => d.id === docId)?.name && new Date(l.dischargeTime) >= timelineStart).length;
+    const dischargedCount = patientLogs.filter(l => 
+        l.treatedByDoctorName === doctors.find(d => d.id === docId)?.name && 
+        new Date(l.dischargeTime) >= timelineStart
+    ).length;
     return { activeCount, heavyCount, dischargedCount };
   };
 
-  const getNurseStats = (nurseId: string) => registrationLogs.filter(l => l.nurseId === nurseId && new Date(l.timestamp) >= timelineStart && new Date(l.timestamp) <= timelineEnd).length;
-  const getTotalTriageCount = () => registrationLogs.filter(l => new Date(l.timestamp) >= timelineStart && new Date(l.timestamp) <= timelineEnd).length;
-
-  const handleNurseSectionChange = (nurseId: string, section: string) => { setNurses(nurses.map(n => n.id === nurseId ? { ...n, assignedSection: section } : n)); };
-  const handleAddDoctorToShift = () => { if (!selectedDoctorId) return; setDoctors(doctors.map(d => d.id === selectedDoctorId ? { ...d, isActive: true } : d)); setSelectedDoctorId(''); };
-  const handleAddNurseToShift = () => { if (!selectedNurseId) return; setNurses(nurses.map(n => n.id === selectedNurseId ? { ...n, isActive: true } : n)); setSelectedNurseId(''); };
-  const removeStaffFromShift = (id: string, type: 'Doctor' | 'Nurse') => {
-    if (type === 'Doctor') setDoctors(doctors.map(d => d.id === id ? { ...d, isActive: false } : d));
-    else setNurses(nurses.map(n => n.id === id ? { ...n, isActive: false } : n));
+  const getNurseStats = (nurseId: string) => {
+      return registrationLogs.filter(l => 
+          l.nurseId === nurseId && 
+          new Date(l.timestamp) >= timelineStart && 
+          new Date(l.timestamp) <= timelineEnd
+      ).length;
   };
 
-  const SHIFT_BUTTON = [
-    { label: '08-20', start: 8, end: 20, color: 'bg-blue-900/30 text-blue-300 border-blue-900/50' },
-    { label: '20-08', start: 20, end: 8, color: 'bg-indigo-900/30 text-indigo-300 border-indigo-900/50' },
-    { label: '08-08', start: 8, end: 8, color: 'bg-purple-900/30 text-purple-300 border-purple-900/50' },
-    { label: '09-21', start: 9, end: 21, color: 'bg-cyan-900/30 text-cyan-300 border-cyan-900/50' },
-    { label: '09-09', start: 9, end: 9, color: 'bg-teal-900/30 text-teal-300 border-teal-900/50' },
-    { label: '10-22', start: 10, end: 22, color: 'bg-emerald-900/30 text-emerald-300 border-emerald-900/50' },
-  ];
+  const getTotalTriageCount = () => {
+      return registrationLogs.filter(l => 
+          new Date(l.timestamp) >= timelineStart && 
+          new Date(l.timestamp) <= timelineEnd
+      ).length;
+  };
 
-  const SHIFT_BUTTONS = SHIFT_BUTTON; // Alias for consistency
+  const handleNurseSectionChange = (nurseId: string, section: string) => { 
+      setNurses(nurses.map(n => n.id === nurseId ? { ...n, assignedSection: section } : n)); 
+  };
+
+  const handleAddDoctorToShift = () => { 
+      if (!selectedDoctorId) return; 
+      setDoctors(doctors.map(d => d.id === selectedDoctorId ? { ...d, isActive: true } : d)); 
+      setSelectedDoctorId(''); 
+  };
+
+  const handleAddNurseToShift = () => { 
+      if (!selectedNurseId) return; 
+      setNurses(nurses.map(n => n.id === selectedNurseId ? { ...n, isActive: true } : n)); 
+      setSelectedNurseId(''); 
+  };
+
+  const removeStaffFromShift = (id: string, type: 'Doctor' | 'Nurse') => {
+    if (type === 'Doctor') {
+        setDoctors(doctors.map(d => d.id === id ? { ...d, isActive: false } : d));
+    } else {
+        setNurses(nurses.map(n => n.id === id ? { ...n, isActive: false } : n));
+    }
+  };
+
+  // Helper to check for ending shift cleanly
+  const checkEndingSoon = (shift: WorkShift): boolean => {
+      const now = currentTime.getTime();
+      const end = new Date(shift.end).getTime();
+      const diff = end - now;
+      return diff > 0 && diff < 3600000;
+  };
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 h-full overflow-y-auto custom-scrollbar">
       
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-sm">
         <div>
-           <h2 className="text-xl md:text-2xl font-bold text-slate-100 flex items-center gap-3"><CalendarClock className="text-blue-500" /> Personalo ir Pamainos valdymas</h2>
-           <p className="text-slate-400 mt-1 flex items-center gap-2"><span className="text-xs md:text-sm">Laiko juosta: {timelineStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - {timelineEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></p>
+           <h2 className="text-xl md:text-2xl font-bold text-slate-100 flex items-center gap-3">
+               <CalendarClock className="text-blue-500" /> Personalo ir Pamainos valdymas
+           </h2>
+           <p className="text-slate-400 mt-1 flex items-center gap-2">
+               <span className="text-xs md:text-sm">Laiko juosta: {timelineStart.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - {timelineEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+           </p>
         </div>
-        <div className="flex gap-4"><div className="text-right"><div className="text-xl md:text-2xl font-light text-slate-100 tabular-nums">{currentTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div><div className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-wider">Dabartinis laikas</div></div></div>
+        <div className="flex gap-4">
+            <div className="text-right">
+                <div className="text-xl md:text-2xl font-light text-slate-100 tabular-nums">{currentTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                <div className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-wider">Dabartinis laikas</div>
+            </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 pb-20">
@@ -130,11 +201,17 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
         {/* LEFT COLUMN: Nurses */}
         <div className="lg:col-span-1 space-y-4">
            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
-              <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center"><h3 className="font-bold text-slate-200 text-sm uppercase tracking-wide">Slaugytojos & Postai</h3><div className="text-[10px] bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-900/50 font-bold flex items-center gap-1" title="Viso triažo registracijų šią pamainą"><ClipboardList size={10} /> Reg: {getTotalTriageCount()}</div></div>
+              <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-200 text-sm uppercase tracking-wide">Slaugytojos & Postai</h3>
+                  <div className="text-[10px] bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-900/50 font-bold flex items-center gap-1" title="Viso triažo registracijų šią pamainą">
+                      <ClipboardList size={10} /> Reg: {getTotalTriageCount()}
+                  </div>
+              </div>
               <div className="p-3 border-b border-slate-800/50 bg-slate-900/50">
                   <div className="flex flex-col sm:flex-row gap-2">
                       <select value={selectedNurseId} onChange={(e) => setSelectedNurseId(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-2 text-sm md:text-xs outline-none focus:border-emerald-500">
-                          <option value="">Pasirinkti iš banko...</option>{availableNurses.map(n => (<option key={n.id} value={n.id}>{n.name} {n.assignedSection ? `(${n.assignedSection})` : ''}</option>))}
+                          <option value="">Pasirinkti iš banko...</option>
+                          {availableNurses.map(n => (<option key={n.id} value={n.id}>{n.name} {n.assignedSection ? `(${n.assignedSection})` : ''}</option>))}
                       </select>
                       <button onClick={handleAddNurseToShift} disabled={!selectedNurseId} className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded disabled:opacity-50 flex items-center justify-center"><Plus size={16} /></button>
                   </div>
@@ -142,27 +219,34 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
               </div>
               <div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
                  {nurses.map(nurse => {
-                    const regCount = getNurseStats(nurse.id); const isTriage = nurse.assignedSection === 'Triažas';
+                    const regCount = getNurseStats(nurse.id); 
+                    const isTriage = nurse.assignedSection === 'Triažas';
                     return (
                     <div key={nurse.id} className={`p-2 rounded-lg border transition-all ${nurse.isActive ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700 opacity-60 hidden'}`}>
                         {nurse.isActive && (
                             <>
                                 <div className="flex items-center justify-between mb-2">
-                                    <label className="flex items-center gap-3 cursor-pointer flex-1"><span className={`w-2 h-2 rounded-full ${nurse.isActive ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
-                                    <div className="flex flex-col">
-                                        <span className={`text-base md:text-sm font-medium ${nurse.isActive ? 'text-slate-200' : 'text-slate-500'}`}>{nurse.name}{(isTriage || regCount > 0) && (<span className={`ml-2 text-[10px] px-1 rounded border font-mono ${isTriage ? 'bg-blue-900/30 text-blue-300 border-blue-900/50' : 'bg-slate-700/50 text-slate-400 border-slate-600'}`}>Reg: {regCount}</span>)}</span>
-                                        {/* Skill Badges */}
-                                        {nurse.skillIds && nurse.skillIds.length > 0 && (
-                                            <div className="flex gap-1 mt-0.5">
-                                                {nurse.skillIds.map(skId => {
-                                                    const sk = skills.find(s => s.id === skId);
-                                                    return sk ? <span key={skId} className={`text-[8px] px-1 rounded text-white ${sk.color}`}>{sk.label}</span> : null;
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
+                                    <label className="flex items-center gap-3 cursor-pointer flex-1">
+                                        <span className={`w-2 h-2 rounded-full ${nurse.isActive ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
+                                        <div className="flex flex-col">
+                                            <span className={`text-base md:text-sm font-medium ${nurse.isActive ? 'text-slate-200' : 'text-slate-500'}`}>
+                                                {nurse.name}
+                                                {(isTriage || regCount > 0) && (<span className={`ml-2 text-[10px] px-1 rounded border font-mono ${isTriage ? 'bg-blue-900/30 text-blue-300 border-blue-900/50' : 'bg-slate-700/50 text-slate-400 border-slate-600'}`}>Reg: {regCount}</span>)}
+                                            </span>
+                                            {/* Skill Badges */}
+                                            {nurse.skillIds && nurse.skillIds.length > 0 && (
+                                                <div className="flex gap-1 mt-0.5">
+                                                    {nurse.skillIds.map(skId => {
+                                                        const sk = skills.find(s => s.id === skId);
+                                                        return sk ? <span key={skId} className={`text-[8px] px-1 rounded text-white ${sk.color}`}>{sk.label}</span> : null;
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
                                     </label>
-                                    <div className="flex gap-1"><button onClick={() => removeStaffFromShift(nurse.id, 'Nurse')} className="text-slate-500 hover:text-red-400 p-2 md:p-1 hover:bg-slate-700/50 rounded" title="Pašalinti iš pamainos"><X size={18} /></button></div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => removeStaffFromShift(nurse.id, 'Nurse')} className="text-slate-500 hover:text-red-400 p-2 md:p-1 hover:bg-slate-700/50 rounded" title="Pašalinti iš pamainos"><X size={18} /></button>
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2 ml-4">
                                     <MapPin size={12} className="text-slate-500" />
@@ -185,13 +269,33 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
                  <h3 className="font-bold text-slate-200 flex items-center gap-2"><Briefcase size={18} className="text-purple-500"/> Gydytojų Grafikas</h3>
-                 <div className="hidden lg:flex items-center gap-4 text-xs"><div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-600 rounded"></div> Dieninė</div><div className="flex items-center gap-1"><div className="w-3 h-3 bg-indigo-600 rounded"></div> Naktinė</div><div className="flex items-center gap-1"><div className="w-3 h-3 bg-yellow-500 rounded"></div> Baigiasi pamaina</div></div>
+                 <div className="hidden lg:flex items-center gap-4 text-xs">
+                     <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-600 rounded"></div> Dieninė</div>
+                     <div className="flex items-center gap-1"><div className="w-3 h-3 bg-indigo-600 rounded"></div> Naktinė</div>
+                     <div className="flex items-center gap-1"><div className="w-3 h-3 bg-yellow-500 rounded"></div> Baigiasi pamaina</div>
+                 </div>
               </div>
               
               {/* DESKTOP VIEW: Timeline */}
               <div className="hidden lg:block p-4 overflow-x-auto">
-                 <div className="flex items-center gap-2 mb-4 bg-slate-800/30 p-2 rounded border border-slate-800 max-w-md"><span className="text-xs font-bold text-slate-500 uppercase px-2"><UserPlus size={16}/></span><select value={selectedDoctorId} onChange={(e) => setSelectedDoctorId(e.target.value)} className="flex-1 bg-transparent border-none text-slate-200 text-sm outline-none"><option value="" className="bg-slate-900">Pasirinkti gydytoją iš banko...</option>{availableDoctors.map(d => (<option key={d.id} value={d.id} className="bg-slate-900">{d.name}</option>))}</select><button onClick={handleAddDoctorToShift} disabled={!selectedDoctorId} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold disabled:opacity-50">PRIDĖTI</button></div>
-                 <div className="relative h-6 mb-2 min-w-[600px] border-b border-slate-700">{[0, 4, 8, 12, 16, 20, 24].map(h => (<div key={h} className="absolute text-[10px] text-slate-500 transform -translate-x-1/2" style={{ left: `${(h / 24) * 100}%` }}>{new Date(timelineStart.getTime() + h * 60 * 60 * 1000).getHours()}:00</div>))}<div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10" style={{ left: `${currentTimePos}%` }}></div></div>
+                 <div className="flex items-center gap-2 mb-4 bg-slate-800/30 p-2 rounded border border-slate-800 max-w-md">
+                     <span className="text-xs font-bold text-slate-500 uppercase px-2"><UserPlus size={16}/></span>
+                     <select value={selectedDoctorId} onChange={(e) => setSelectedDoctorId(e.target.value)} className="flex-1 bg-transparent border-none text-slate-200 text-sm outline-none">
+                         <option value="" className="bg-slate-900">Pasirinkti gydytoją iš banko...</option>
+                         {availableDoctors.map(d => (<option key={d.id} value={d.id} className="bg-slate-900">{d.name}</option>))}
+                     </select>
+                     <button onClick={handleAddDoctorToShift} disabled={!selectedDoctorId} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold disabled:opacity-50">PRIDĖTI</button>
+                 </div>
+                 
+                 <div className="relative h-6 mb-2 min-w-[600px] border-b border-slate-700">
+                     {[0, 4, 8, 12, 16, 20, 24].map(h => (
+                         <div key={h} className="absolute text-[10px] text-slate-500 transform -translate-x-1/2" style={{ left: `${(h / 24) * 100}%` }}>
+                             {new Date(timelineStart.getTime() + h * 60 * 60 * 1000).getHours()}:00
+                         </div>
+                     ))}
+                     <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10" style={{ left: `${currentTimePos}%` }}></div>
+                 </div>
+                 
                  <div className="space-y-4 min-w-[600px]">
                     {doctors.filter(d => d.role === 'Doctor' && d.isActive).map(doc => {
                         const shift = workShifts.find(s => s.doctorId === doc.id); 
@@ -207,7 +311,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                             const shiftEnd = getPosition(shift.end);
                             shiftStartPos = shiftStart;
                             shiftWidth = Math.max(shiftEnd - shiftStart, 1);
-                            isEndingSoon = (new Date(shift.end).getTime() - currentTime.getTime() > 0) && (new Date(shift.end).getTime() - currentTime.getTime() < 3600000);
+                            isEndingSoon = checkEndingSoon(shift);
                         }
                         
                         return (
@@ -221,7 +325,11 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                                 {specName && <span className="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded border border-slate-600">{specName}</span>}
                                                 <button onClick={() => removeStaffFromShift(doc.id, 'Doctor')} className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition" title="Pašalinti iš pamainos"><X size={12}/></button>
                                             </div>
-                                            <div className="flex gap-2 text-[10px] text-slate-500"><span>Aktyvūs: <strong className="text-blue-400">{stats.activeCount}</strong></span><span>Sunkūs: <strong className="text-red-400">{stats.heavyCount}</strong></span><span>Išrašė: <strong className="text-green-400">{stats.dischargedCount}</strong></span></div>
+                                            <div className="flex gap-2 text-[10px] text-slate-500">
+                                                <span>Aktyvūs: <strong className="text-blue-400">{stats.activeCount}</strong></span>
+                                                <span>Sunkūs: <strong className="text-red-400">{stats.heavyCount}</strong></span>
+                                                <span>Išrašė: <strong className="text-green-400">{stats.dischargedCount}</strong></span>
+                                            </div>
                                             {/* Skills */}
                                             {doc.skillIds && doc.skillIds.length > 0 && (
                                                 <div className="flex gap-1 mt-1">
@@ -253,7 +361,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                                                 onChange={(e) => updateShiftTime(shift.id, 'start', e.target.value)} 
                                                 onClick={(e) => e.stopPropagation()}
                                             />
-                                            {isEndingSoon && <AlertTriangle size={12} className="animate-pulse text-white mx-auto"/>}
+                                            {isEndingSoon ? <AlertTriangle size={12} className="animate-pulse text-white mx-auto"/> : null}
                                             <input 
                                                 type="time" 
                                                 className="bg-transparent text-white w-12 outline-none cursor-pointer hover:bg-black/20 rounded px-0.5 text-center" 
