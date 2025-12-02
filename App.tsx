@@ -503,7 +503,7 @@ const App: React.FC = () => {
                                     nurses={nurses}
                                     patientLogs={patientLog}
                                     registrationLogs={registrationLogs}
-                                    onNavigate={navigate}
+                                    onNavigate={handleMenuClick}
                                     bulletinMessage={bulletinMessage}
                                     onUpdateBulletin={setBulletinMessage}
                                 />
