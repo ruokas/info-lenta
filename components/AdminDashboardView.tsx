@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Bed, Staff, PatientLogEntry, RegistrationLog, PatientStatus } from '../types';
-import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight, Megaphone, Save, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight, Megaphone, Save, Trash2, Clock } from 'lucide-react';
 import { TRIAGE_COLORS, PHYSICAL_SECTIONS } from '../constants';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -97,6 +97,48 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     };
   }, [beds, doctors, nurses, patientLogs, registrationLogs]);
 
+  // --- DOCTOR LEADERBOARD STATS ---
+  const doctorPerformance = useMemo(() => {
+      const perf: Record<string, { id: string, name: string, active: number, discharged: number, totalMins: number }> = {};
+
+      // Initialize
+      doctors.filter(d => d.role === 'Doctor').forEach(d => {
+          perf[d.id] = { id: d.id, name: d.name, active: 0, discharged: 0, totalMins: 0 };
+      });
+
+      // Count Active
+      beds.forEach(b => {
+          if (b.patient && b.assignedDoctorId && perf[b.assignedDoctorId]) {
+              perf[b.assignedDoctorId].active++;
+          }
+      });
+
+      // Count Historical (Log)
+      patientLogs.forEach(log => {
+          // Attempt to find doctor by name match as logs store name
+          const doc = Object.values(perf).find(p => p.name === log.treatedByDoctorName);
+          if (doc) {
+              doc.discharged++;
+              if (log.totalDuration) {
+                  const parts = log.totalDuration.split(' ');
+                  let mins = 0;
+                  parts.forEach(p => {
+                      if (p.includes('h')) mins += parseInt(p) * 60;
+                      if (p.includes('m')) mins += parseInt(p);
+                  });
+                  doc.totalMins += mins;
+              }
+          }
+      });
+
+      return Object.values(perf)
+          .map(p => ({
+              ...p,
+              avgMins: p.discharged > 0 ? Math.round(p.totalMins / p.discharged) : 0
+          }))
+          .sort((a, b) => b.active - a.active); // Sort by active load
+  }, [doctors, beds, patientLogs]);
+
   const isDbConnected = isSupabaseConfigured();
 
   // --- CHART HELPERS ---
@@ -125,6 +167,13 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       });
 
       return `conic-gradient(${segments.join(', ')})`;
+  };
+
+  const formatDuration = (mins: number) => {
+      if (mins === 0) return '-';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return `${h}h ${m}m`;
   };
 
   return (
@@ -261,7 +310,7 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
          </div>
 
-         {/* Bulletin Board Widget (NEW) & Triage Donut */}
+         {/* Bulletin Board Widget & Triage Donut */}
          <div className="flex flex-col gap-6">
              {/* BULLETIN BOARD */}
              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col">
@@ -315,6 +364,63 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 </div>
              </div>
          </div>
+      </div>
+
+      {/* DOCTOR LEADERBOARD WIDGET (NEW) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm mb-8">
+          <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-slate-200 flex items-center gap-2">
+                  <TrendingUp size={18} className="text-purple-500"/>
+                  Gydytojų Efektyvumas (Leaderboard)
+              </h3>
+              <span className="text-xs text-slate-500">Duomenys atnaujinami realiu laiku</span>
+          </div>
+          <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-950/50 border-b border-slate-800">
+                      <tr>
+                          <th className="px-4 py-3 rounded-tl-lg">Gydytojas</th>
+                          <th className="px-4 py-3 text-center">Aktyvūs pacientai</th>
+                          <th className="px-4 py-3 text-center">Išrašyta (Viso)</th>
+                          <th className="px-4 py-3 text-right rounded-tr-lg">Vid. Gyd. Trukmė</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                      {doctorPerformance.map(doc => (
+                          <tr key={doc.id} className="hover:bg-slate-800/50 transition">
+                              <td className="px-4 py-3 font-medium text-slate-200 flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-400 border border-slate-700">
+                                      {doc.name.substring(0,2).toUpperCase()}
+                                  </div>
+                                  {doc.name}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                  <span className={`px-2 py-1 rounded text-xs font-bold border ${
+                                      doc.active > 8 ? 'bg-red-900/20 text-red-400 border-red-900/30' : 
+                                      doc.active > 5 ? 'bg-yellow-900/20 text-yellow-400 border-yellow-900/30' : 
+                                      'bg-slate-800 text-slate-300 border-slate-700'
+                                  }`}>
+                                      {doc.active}
+                                  </span>
+                              </td>
+                              <td className="px-4 py-3 text-center text-slate-400 font-mono">
+                                  {doc.discharged}
+                              </td>
+                              <td className={`px-4 py-3 text-right font-mono text-xs ${
+                                  doc.avgMins > 240 ? 'text-red-400 font-bold' : 
+                                  doc.avgMins > 180 ? 'text-yellow-500' : 'text-emerald-400'
+                              }`}>
+                                  {doc.avgMins > 240 && <AlertTriangle size={12} className="inline mr-1"/>}
+                                  {formatDuration(doc.avgMins)}
+                              </td>
+                          </tr>
+                      ))}
+                      {doctorPerformance.length === 0 && (
+                          <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500 italic">Nėra duomenų</td></tr>
+                      )}
+                  </tbody>
+              </table>
+          </div>
       </div>
 
       {/* BOTTOM SECTION: QUICK ACTIONS */}

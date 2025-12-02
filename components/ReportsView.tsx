@@ -146,8 +146,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
       })).sort((a,b) => b.count - a.count);
   }, [patientLogs, startDate, endDate]);
 
-  // --- FLOW LOGIC ---
-  const flowStats = useMemo(() => {
+  // --- FLOW LOGIC (LOS & Severity) ---
+  const detailedFlowStats = useMemo(() => {
       const start = new Date(startDate); start.setHours(0,0,0,0);
       const end = new Date(endDate); end.setHours(23,59,59,999);
       
@@ -156,15 +156,57 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
           return d >= start && d <= end;
       });
 
-      const total = filtered.length;
-      const daysDiff = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      const avgPerDay = Math.round(total / daysDiff);
+      const total = filtered.length || 1; // Prevent division by zero
       
-      // Critical rate
-      const critical = filtered.filter(l => l.triageCategory <= 2).length;
-      const criticalRate = total > 0 ? Math.round((critical / total) * 100) : 0;
+      // Basic Stats
+      const daysDiff = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      const avgPerDay = Math.round(filtered.length / daysDiff);
+      const criticalCountBasic = filtered.filter(l => l.triageCategory <= 2).length;
+      const criticalRate = Math.round((criticalCountBasic / total) * 100);
 
-      return { total, avgPerDay, criticalRate };
+      // Detailed LOS Analysis
+      const los = { less1: 0, _1_4: 0, _4_8: 0, more8: 0 };
+      const severity = { critical: 0, standard: 0, light: 0 }; // Critical: 1-2, Standard: 3, Light: 4-5
+
+      filtered.forEach(log => {
+          // Duration Parsing
+          let mins = 0;
+          if (log.totalDuration) {
+              const parts = log.totalDuration.split(' ');
+              parts.forEach(p => {
+                  if (p.includes('h')) mins += parseInt(p) * 60;
+                  if (p.includes('m')) mins += parseInt(p);
+              });
+          }
+          
+          if (mins < 60) los.less1++;
+          else if (mins < 240) los._1_4++;
+          else if (mins < 480) los._4_8++;
+          else los.more8++;
+
+          // Severity Bucketing
+          const cat = log.triageCategory;
+          if (cat <= 2) severity.critical++;
+          else if (cat === 3) severity.standard++;
+          else severity.light++;
+      });
+
+      return { 
+          total: filtered.length, 
+          avgPerDay, 
+          criticalRate,
+          los: {
+              less1: { count: los.less1, percent: Math.round((los.less1/total)*100) },
+              _1_4: { count: los._1_4, percent: Math.round((los._1_4/total)*100) },
+              _4_8: { count: los._4_8, percent: Math.round((los._4_8/total)*100) },
+              more8: { count: los.more8, percent: Math.round((los.more8/total)*100) }
+          },
+          severity: {
+              critical: { count: severity.critical, percent: Math.round((severity.critical/total)*100) },
+              standard: { count: severity.standard, percent: Math.round((severity.standard/total)*100) },
+              light: { count: severity.light, percent: Math.round((severity.light/total)*100) }
+          }
+      };
   }, [patientLogs, startDate, endDate]);
 
   const handlePrint = () => { window.print(); };
@@ -254,7 +296,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
       )}
 
       {/* --- CONTENT AREA (WRAPPED FOR PRINT) --- */}
-      <div id="printable-area" className="flex-1 overflow-hidden flex flex-col">
+      <div id="printable-area" className="flex-1 overflow-auto custom-scrollbar flex flex-col">
         <div className="hidden print:block mb-4">
             <h1 className="text-2xl font-bold text-black">
                 {activeTab === 'history' ? 'Pacientų istorija' : 
@@ -274,8 +316,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
 
         {/* --- TAB 2: TRIAGE STATS --- */}
         {activeTab === 'triage' && (
-            <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm print:bg-white print:border-none print:shadow-none print:overflow-visible">
-                <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center print:bg-white print:text-black print:border-black">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm print:bg-white print:border-none print:shadow-none print:overflow-visible h-full">
+                <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center print:bg-white print:text-black print:border-black shrink-0">
                     <h3 className="font-bold text-slate-200 print:text-black">Slaugytojų darbo suvestinė</h3>
                     <div className="text-sm text-slate-400 print:text-black">Viso registracijų: <span className="text-emerald-400 font-bold print:text-black">{totalPeriodRegs}</span></div>
                 </div>
@@ -307,8 +349,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
 
         {/* --- TAB 3: DOCTOR WORKLOAD --- */}
         {activeTab === 'workload' && (
-            <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm print:bg-white print:border-none print:shadow-none print:overflow-visible">
-                <div className="p-4 bg-slate-950/50 border-b border-slate-800 print:bg-white print:border-black"><h3 className="font-bold text-slate-200 print:text-black">Gydytojų Krūvio Analizė</h3></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm print:bg-white print:border-none print:shadow-none print:overflow-visible h-full">
+                <div className="p-4 bg-slate-950/50 border-b border-slate-800 print:bg-white print:border-black shrink-0"><h3 className="font-bold text-slate-200 print:text-black">Gydytojų Krūvio Analizė</h3></div>
                 <div className="overflow-auto custom-scrollbar flex-1 print:overflow-visible">
                     <table className="w-full text-sm text-left print:text-black">
                         <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-semibold sticky top-0 z-10 print:bg-gray-100 print:text-black print:static">
@@ -329,23 +371,108 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
             </div>
         )}
 
-        {/* --- TAB 4: FLOW STATS --- */}
+        {/* --- TAB 4: FLOW STATS (UPDATED) --- */}
         {activeTab === 'flow' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:block print:space-y-6">
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center print:bg-white print:border-gray-300 print:mb-4">
-                    <div className="text-slate-500 text-sm uppercase font-bold mb-2 print:text-black">Viso pacientų</div>
-                    <div className="text-5xl font-bold text-blue-500 print:text-black">{flowStats.total}</div>
-                    <div className="text-slate-400 text-xs mt-2 print:text-gray-600">Per pasirinktą laikotarpį</div>
+            <div className="space-y-6 pb-20">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:block print:space-y-6">
+                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center print:bg-white print:border-gray-300 print:mb-4">
+                        <div className="text-slate-500 text-sm uppercase font-bold mb-2 print:text-black">Viso pacientų</div>
+                        <div className="text-5xl font-bold text-blue-500 print:text-black">{detailedFlowStats.total}</div>
+                        <div className="text-slate-400 text-xs mt-2 print:text-gray-600">Per pasirinktą laikotarpį</div>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center print:bg-white print:border-gray-300 print:mb-4">
+                        <div className="text-slate-500 text-sm uppercase font-bold mb-2 print:text-black">Vidutiniškai per dieną</div>
+                        <div className="text-5xl font-bold text-emerald-500 print:text-black">{detailedFlowStats.avgPerDay}</div>
+                        <div className="text-slate-400 text-xs mt-2 print:text-gray-600">Pacientų / 24h</div>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center print:bg-white print:border-gray-300">
+                        <div className="text-slate-500 text-sm uppercase font-bold mb-2 print:text-black">Sunkių ligonių dalis</div>
+                        <div className="text-5xl font-bold text-red-500 print:text-black">{detailedFlowStats.criticalRate}%</div>
+                        <div className="text-slate-400 text-xs mt-2 print:text-gray-600">Kategorijos 1 ir 2</div>
+                    </div>
                 </div>
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center print:bg-white print:border-gray-300 print:mb-4">
-                    <div className="text-slate-500 text-sm uppercase font-bold mb-2 print:text-black">Vidutiniškai per dieną</div>
-                    <div className="text-5xl font-bold text-emerald-500 print:text-black">{flowStats.avgPerDay}</div>
-                    <div className="text-slate-400 text-xs mt-2 print:text-gray-600">Pacientų / 24h</div>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center print:bg-white print:border-gray-300">
-                    <div className="text-slate-500 text-sm uppercase font-bold mb-2 print:text-black">Sunkių ligonių dalis</div>
-                    <div className="text-5xl font-bold text-red-500 print:text-black">{flowStats.criticalRate}%</div>
-                    <div className="text-slate-400 text-xs mt-2 print:text-gray-600">Kategorijos 1 ir 2</div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block print:space-y-6">
+                    {/* LOS Chart */}
+                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm print:bg-white print:border-gray-300 print:break-inside-avoid">
+                        <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2 print:text-black">
+                            <Clock size={20} className="text-blue-500" /> Buvimo trukmės (LOS) analizė
+                        </h3>
+                        <div className="space-y-4">
+                            <div>
+                                <div className="flex justify-between text-sm mb-1 print:text-black">
+                                    <span className="text-slate-400">Greiti (&lt; 1 val.)</span>
+                                    <span className="font-bold text-slate-200">{detailedFlowStats.los.less1.count} ({detailedFlowStats.los.less1.percent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden print:bg-gray-200 border border-slate-700 print:border-gray-300">
+                                    <div className="bg-emerald-500 h-full rounded-full print:bg-gray-600" style={{width: `${detailedFlowStats.los.less1.percent}%`}}></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1 print:text-black">
+                                    <span className="text-slate-400">Standartiniai (1 - 4 val.)</span>
+                                    <span className="font-bold text-slate-200">{detailedFlowStats.los._1_4.count} ({detailedFlowStats.los._1_4.percent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden print:bg-gray-200 border border-slate-700 print:border-gray-300">
+                                    <div className="bg-blue-500 h-full rounded-full print:bg-gray-500" style={{width: `${detailedFlowStats.los._1_4.percent}%`}}></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1 print:text-black">
+                                    <span className="text-slate-400">Užsitęsę (4 - 8 val.)</span>
+                                    <span className="font-bold text-slate-200">{detailedFlowStats.los._4_8.count} ({detailedFlowStats.los._4_8.percent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden print:bg-gray-200 border border-slate-700 print:border-gray-300">
+                                    <div className="bg-yellow-500 h-full rounded-full print:bg-gray-400" style={{width: `${detailedFlowStats.los._4_8.percent}%`}}></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-1 print:text-black">
+                                    <span className="text-slate-400">Probleminiai (&gt; 8 val.)</span>
+                                    <span className="font-bold text-slate-200">{detailedFlowStats.los.more8.count} ({detailedFlowStats.los.more8.percent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden print:bg-gray-200 border border-slate-700 print:border-gray-300">
+                                    <div className="bg-red-600 h-full rounded-full print:bg-black" style={{width: `${detailedFlowStats.los.more8.percent}%`}}></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Severity Structure */}
+                    <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-sm print:bg-white print:border-gray-300 print:break-inside-avoid">
+                        <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2 print:text-black">
+                            <Activity size={20} className="text-red-500" /> Pacientų sunkumo struktūra
+                        </h3>
+                        <div className="flex h-8 w-full rounded-lg overflow-hidden mb-6 flex bg-slate-800 border border-slate-700 print:border-gray-300">
+                            {detailedFlowStats.severity.critical.percent > 0 && <div className="bg-red-600 h-full flex items-center justify-center text-[10px] font-bold text-white transition-all duration-500 print:bg-black" style={{width: `${detailedFlowStats.severity.critical.percent}%`}} title="Reanimaciniai">{detailedFlowStats.severity.critical.percent}%</div>}
+                            {detailedFlowStats.severity.standard.percent > 0 && <div className="bg-yellow-500 h-full flex items-center justify-center text-[10px] font-bold text-slate-900 transition-all duration-500 print:bg-gray-400" style={{width: `${detailedFlowStats.severity.standard.percent}%`}} title="Skubūs">{detailedFlowStats.severity.standard.percent}%</div>}
+                            {detailedFlowStats.severity.light.percent > 0 && <div className="bg-green-600 h-full flex items-center justify-center text-[10px] font-bold text-white transition-all duration-500 print:bg-gray-200 print:text-black" style={{width: `${detailedFlowStats.severity.light.percent}%`}} title="Lengvi">{detailedFlowStats.severity.light.percent}%</div>}
+                        </div>
+                        
+                        <div className="space-y-4">
+                             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-950/50 border border-slate-800 print:bg-white print:border-gray-200">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-red-600 print:bg-black"></div>
+                                    <span className="text-sm text-slate-300 print:text-black">Reanimaciniai (1-2 Kat)</span>
+                                </div>
+                                <span className="font-bold text-slate-100 print:text-black">{detailedFlowStats.severity.critical.count}</span>
+                             </div>
+                             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-950/50 border border-slate-800 print:bg-white print:border-gray-200">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-yellow-500 print:bg-gray-400"></div>
+                                    <span className="text-sm text-slate-300 print:text-black">Standartiniai (3 Kat)</span>
+                                </div>
+                                <span className="font-bold text-slate-100 print:text-black">{detailedFlowStats.severity.standard.count}</span>
+                             </div>
+                             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-950/50 border border-slate-800 print:bg-white print:border-gray-200">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-3 h-3 rounded-full bg-green-600 print:bg-gray-200 print:border print:border-black"></div>
+                                    <span className="text-sm text-slate-300 print:text-black">Lengvi (4-5 Kat)</span>
+                                </div>
+                                <span className="font-bold text-slate-100 print:text-black">{detailedFlowStats.severity.light.count}</span>
+                             </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         )}

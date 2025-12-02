@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem, WorkShift, Vitals, MedicationProtocol } from '../types';
-import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles, Wind, Thermometer, Brain, MapPin, Users } from 'lucide-react';
+import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles, Wind, Thermometer, Brain, MapPin, Users, Mic, MicOff } from 'lucide-react';
 import { STATUS_COLORS } from '../constants';
 
 interface EditPatientModalProps {
@@ -57,6 +57,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   // ARPA Suggestion State
   const [suggestedDoctor, setSuggestedDoctor] = useState<{id: string, name: string, score: number} | null>(null);
 
+  // Voice Dictation State
+  const [listeningField, setListeningField] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+
   const activeDoctors = useMemo(() => {
     return doctors.filter(d => d.role === 'Doctor' && d.isActive !== false);
   }, [doctors]);
@@ -68,10 +72,15 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   const quickPickMeds = useMemo(() => {
     if (!medicationBank || !Array.isArray(medicationBank)) return [];
     const COMMON_PRIORITY = ['Ketorolaci tromethaminum', 'Paracetamolum', 'Ibuprofenum', 'Metoclopramidum', 'Sodium chloride', 'Diazepamum', 'Morphinum', 'Adrenalinum', 'Captoprilum', 'Furosemidum', 'Salbutamolum', 'Glyceroli trinitras'];
+    
+    // Safety check: ensure m and m.name exist
     const priorityMeds = medicationBank.filter(m => m && m.name && m.isActive !== false && COMMON_PRIORITY.some(p => m.name.includes(p)));
+    
     priorityMeds.sort((a, b) => {
-        const idxA = COMMON_PRIORITY.findIndex(p => a.name.includes(p));
-        const idxB = COMMON_PRIORITY.findIndex(p => b.name.includes(p));
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        const idxA = COMMON_PRIORITY.findIndex(p => nameA.includes(p));
+        const idxB = COMMON_PRIORITY.findIndex(p => nameB.includes(p));
         return (idxA === -1 ? Infinity : idxA) - (idxB === -1 ? Infinity : idxB);
     });
     return priorityMeds.slice(0, 20); 
@@ -112,7 +121,17 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
     setNewActionTime(`${hh}:${mm}`);
+    setListeningField(null);
   }, [bed]);
+
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+      return () => {
+          if (recognitionRef.current) {
+              recognitionRef.current.stop();
+          }
+      };
+  }, []);
 
   const hasUnsavedChanges = useMemo(() => JSON.stringify(bed) !== JSON.stringify(formData), [bed, formData]);
 
@@ -121,6 +140,50 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
   const handleChange = (field: keyof Bed, value: any) => { setFormData(prev => ({ ...prev, [field]: value })); };
   const handlePatientChange = (field: string, value: any) => { if (!formData.patient) return; setFormData(prev => ({ ...prev, patient: prev.patient ? { ...prev.patient, [field]: value } : undefined })); };
   const handleVitalsChange = (field: string, value: any) => { if (!formData.patient) return; const numValue = (field === 'onOxygen' || field === 'consciousness') ? value : (value === '' ? undefined : Number(value)); setFormData(prev => ({ ...prev, patient: { ...prev.patient!, vitals: { ...prev.patient!.vitals, [field]: numValue, lastUpdated: new Date().toISOString() } } })); };
+
+  // --- Voice Dictation Logic ---
+  const toggleDictation = (fieldId: string, currentText: string, onUpdate: (text: string) => void) => {
+      if (listeningField === fieldId) {
+          // Stop
+          if (recognitionRef.current) recognitionRef.current.stop();
+          setListeningField(null);
+          return;
+      }
+
+      // Start
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+          alert('Jūsų naršyklė nepalaiko balso įvedimo (reikalinga Chrome/Edge).');
+          return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'lt-LT';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+          setListeningField(fieldId);
+      };
+
+      recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          const newText = currentText ? `${currentText} ${transcript}` : transcript;
+          onUpdate(newText);
+      };
+
+      recognition.onend = () => {
+          setListeningField(null);
+      };
+
+      recognition.onerror = (event: any) => {
+          console.error('Speech recognition error', event.error);
+          setListeningField(null);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+  };
 
   // NEWS2 Calculation
   const calculateNEWS2 = (vitals?: Vitals) => {
@@ -315,7 +378,12 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
                              </div>
                           </div>
                           <div>
-                              <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Simptomai</label>
+                              <div className="flex justify-between items-center mb-1">
+                                  <label className="text-xs font-medium text-slate-500 uppercase">Simptomai</label>
+                                  <button type="button" onClick={() => toggleDictation('symptoms', formData.patient?.symptoms || '', (t) => handlePatientChange('symptoms', t))} className={`p-1.5 rounded-full transition-all ${listeningField === 'symptoms' ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-800'}`} title="Balsinis įvedimas">
+                                      {listeningField === 'symptoms' ? <MicOff size={14}/> : <Mic size={14}/>}
+                                  </button>
+                              </div>
                               <input type="text" value={formData.patient.symptoms} onChange={(e) => handlePatientChange('symptoms', e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-3 outline-none text-base" />
                           </div>
                           <div>
@@ -354,7 +422,15 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
                         </div>
                       </div>
                     </div>
-                    <div><label className="block text-xs font-medium text-slate-500 uppercase mb-1">Komentarai</label><textarea rows={3} value={formData.comment || ''} onChange={(e) => handleChange('comment', e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-3 outline-none text-base"/></div>
+                    <div>
+                        <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-medium text-slate-500 uppercase">Komentarai</label>
+                            <button type="button" onClick={() => toggleDictation('comment', formData.comment || '', (t) => handleChange('comment', t))} className={`p-1.5 rounded-full transition-all ${listeningField === 'comment' ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-800'}`} title="Balsinis įvedimas">
+                                {listeningField === 'comment' ? <MicOff size={14}/> : <Mic size={14}/>}
+                            </button>
+                        </div>
+                        <textarea rows={3} value={formData.comment || ''} onChange={(e) => handleChange('comment', e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-4 py-3 outline-none text-base"/>
+                    </div>
                   </div>
                 )}
 
