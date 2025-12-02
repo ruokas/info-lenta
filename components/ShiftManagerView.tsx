@@ -282,7 +282,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
                           </div>
                       )}
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1 italic hidden sm:block">Nerandate sąraše? Pridėkite per "Nustatymai -> Personalo Bankas".</p>
+                  <p className="text-[10px] text-slate-500 mt-1 italic hidden sm:block">Nerandate sąraše? Pridėkite per Nustatymai → Personalo Bankas.</p>
               </div>
               <div className="p-3 space-y-3 flex-1 overflow-y-auto custom-scrollbar">
                  {nurses.map(nurse => {
