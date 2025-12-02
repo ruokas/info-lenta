@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Bed, Staff, PatientLogEntry, RegistrationLog, PatientStatus } from '../types';
-import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight, Megaphone, Save, Trash2, Clock } from 'lucide-react';
+import { LayoutDashboard, Users, Activity, LogOut, TrendingUp, AlertTriangle, Database, Pill, FileBarChart, Briefcase, Settings, ArrowRight, Megaphone, Save, Trash2, Clock, ShieldCheck } from 'lucide-react';
 import { TRIAGE_COLORS, PHYSICAL_SECTIONS } from '../constants';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -11,7 +11,7 @@ interface AdminDashboardViewProps {
   nurses: Staff[];
   patientLogs: PatientLogEntry[];
   registrationLogs: RegistrationLog[];
-  onNavigate: (view: 'settings' | 'reports' | 'shift' | 'table', tab?: string) => void;
+  onNavigate: (view: 'settings' | 'reports' | 'shift' | 'table' | 'audit', tab?: string) => void;
   bulletinMessage: string;
   onUpdateBulletin: (msg: string) => void;
 }
@@ -196,6 +196,64 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       </div>
 
+      {/* TOP SECTION: QUICK ACTIONS (CONTROL CENTER) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+         <button 
+            onClick={() => onNavigate('settings', 'staff')}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-blue-500/50 p-4 rounded-xl text-left transition group shadow-sm"
+         >
+            <div className="mb-3 bg-blue-900/20 text-blue-400 p-2.5 rounded-lg w-fit group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <Users size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Personalo Bankas</div>
+            <div className="text-xs text-slate-500 mt-1">Kurti / Redaguoti darbuotojus</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('settings', 'meds')}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-yellow-500/50 p-4 rounded-xl text-left transition group shadow-sm"
+         >
+            <div className="mb-3 bg-yellow-900/20 text-yellow-400 p-2.5 rounded-lg w-fit group-hover:bg-yellow-600 group-hover:text-white transition-colors">
+                <Pill size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Vaistų Registras</div>
+            <div className="text-xs text-slate-500 mt-1">Valdyti vaistus ir protokolus</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('reports')}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 p-4 rounded-xl text-left transition group shadow-sm"
+         >
+            <div className="mb-3 bg-emerald-900/20 text-emerald-400 p-2.5 rounded-lg w-fit group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <FileBarChart size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Ataskaitos</div>
+            <div className="text-xs text-slate-500 mt-1">Registracijų ir srautų statistika</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('shift')}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-purple-500/50 p-4 rounded-xl text-left transition group shadow-sm"
+         >
+            <div className="mb-3 bg-purple-900/20 text-purple-400 p-2.5 rounded-lg w-fit group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                <Briefcase size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Pamainos</div>
+            <div className="text-xs text-slate-500 mt-1">Grafikų planavimas</div>
+         </button>
+
+         <button 
+            onClick={() => onNavigate('audit')}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 p-4 rounded-xl text-left transition group shadow-sm"
+         >
+            <div className="mb-3 bg-cyan-900/20 text-cyan-400 p-2.5 rounded-lg w-fit group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                <ShieldCheck size={24} />
+            </div>
+            <div className="font-bold text-slate-200">Auditas</div>
+            <div className="text-xs text-slate-500 mt-1">Veiksmų istorija (Log)</div>
+         </button>
+      </div>
+
       {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
          {/* Occupancy */}
@@ -366,7 +424,7 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
          </div>
       </div>
 
-      {/* DOCTOR LEADERBOARD WIDGET (NEW) */}
+      {/* DOCTOR LEADERBOARD WIDGET */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm mb-8">
           <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-slate-200 flex items-center gap-2">
@@ -421,54 +479,6 @@ const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </tbody>
               </table>
           </div>
-      </div>
-
-      {/* BOTTOM SECTION: QUICK ACTIONS */}
-      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Valdymo Centras</h3>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-         <button 
-            onClick={() => onNavigate('settings', 'staff')}
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-blue-500/50 p-4 rounded-xl text-left transition group"
-         >
-            <div className="mb-3 bg-blue-900/20 text-blue-400 p-2.5 rounded-lg w-fit group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                <Users size={24} />
-            </div>
-            <div className="font-bold text-slate-200">Personalo Bankas</div>
-            <div className="text-xs text-slate-500 mt-1">Kurti / Redaguoti darbuotojus</div>
-         </button>
-
-         <button 
-            onClick={() => onNavigate('settings', 'meds')}
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-yellow-500/50 p-4 rounded-xl text-left transition group"
-         >
-            <div className="mb-3 bg-yellow-900/20 text-yellow-400 p-2.5 rounded-lg w-fit group-hover:bg-yellow-600 group-hover:text-white transition-colors">
-                <Pill size={24} />
-            </div>
-            <div className="font-bold text-slate-200">Vaistų Registras</div>
-            <div className="text-xs text-slate-500 mt-1">Valdyti vaistus ir protokolus</div>
-         </button>
-
-         <button 
-            onClick={() => onNavigate('reports')}
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500/50 p-4 rounded-xl text-left transition group"
-         >
-            <div className="mb-3 bg-emerald-900/20 text-emerald-400 p-2.5 rounded-lg w-fit group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                <FileBarChart size={24} />
-            </div>
-            <div className="font-bold text-slate-200">Ataskaitos</div>
-            <div className="text-xs text-slate-500 mt-1">Registracijų ir srautų statistika</div>
-         </button>
-
-         <button 
-            onClick={() => onNavigate('shift')}
-            className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-purple-500/50 p-4 rounded-xl text-left transition group"
-         >
-            <div className="mb-3 bg-purple-900/20 text-purple-400 p-2.5 rounded-lg w-fit group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                <Briefcase size={24} />
-            </div>
-            <div className="font-bold text-slate-200">Pamainos</div>
-            <div className="text-xs text-slate-500 mt-1">Grafikų planavimas</div>
-         </button>
       </div>
 
     </div>

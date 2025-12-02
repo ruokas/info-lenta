@@ -98,6 +98,14 @@ export interface StaffSkill {
   description?: string;
 }
 
+// NEW: User Preferences
+export interface UserPreferences {
+    defaultView?: 'dashboard' | 'map' | 'table' | 'tasks';
+    notificationsEnabled?: boolean;
+    soundEnabled?: boolean;
+    theme?: 'dark' | 'light'; // Reserved for future
+}
+
 export interface Staff {
   id: string;
   name: string;
@@ -109,6 +117,7 @@ export interface Staff {
   specializationId?: string; // NEW: Link to StaffSpecialization
   skillIds?: string[]; // NEW: Array of StaffSkill IDs
   phone?: string; // NEW: Short number
+  preferences?: UserPreferences; // NEW: User preferences
 }
 
 export interface UserProfile extends Staff {
@@ -178,6 +187,18 @@ export interface RegistrationLog {
   nurseId: string;
   patientName: string;
   triageCategory: TriageCategory;
+  timestamp: string;
+}
+
+// NEW: Activity/Audit Log
+export interface ActivityLog {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  action: string; // e.g., 'LOGIN', 'DISCHARGE', 'UPDATE_BED', 'MED_GIVEN'
+  details: string; // Human readable description
+  metadata?: any; // Optional JSON data
   timestamp: string;
 }
 

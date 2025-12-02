@@ -10,24 +10,27 @@ import ReportsView from './components/ReportsView';
 import AdminDashboardView from './components/AdminDashboardView';
 import TasksView from './components/TasksView';
 import SettingsView from './components/SettingsView';
+import AuditLogView from './components/AuditLogView';
+import UserProfileView from './components/UserProfileView'; // NEW
 import { DataService } from './services/DataService';
+import { AuditService } from './services/AuditService';
 import { 
   Bed, Staff, PatientLogEntry, UserProfile, MedicationItem, 
   WorkShift, AssignmentLog, RegistrationLog, PatientStatus, 
   TriageCategory, StaffSpecialization, 
-  StaffSkill, MedicationProtocol, AppSettings
+  StaffSkill, MedicationProtocol, AppSettings, ActivityLog
 } from './types';
 import { 
   INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS, 
   PHYSICAL_SECTIONS, INITIAL_PROTOCOLS, DEFAULT_SETTINGS, 
   INITIAL_SPECIALIZATIONS, INITIAL_SKILLS 
 } from './constants';
-import { LayoutDashboard, Grid, List, ClipboardList, CalendarClock, Settings, LogOut, Menu, Bell, Search, Filter, User, Stethoscope, Activity, X, Map } from 'lucide-react';
+import { LayoutDashboard, Grid, List, ClipboardList, CalendarClock, Settings, LogOut, Menu, Bell, Search, Filter, User, Stethoscope, Activity, X, Map, FileBarChart, ShieldCheck } from 'lucide-react';
 
 const App: React.FC = () => {
   // --- State ---
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'map' | 'table' | 'shift' | 'reports' | 'tasks' | 'settings'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'map' | 'table' | 'shift' | 'reports' | 'tasks' | 'settings' | 'audit' | 'profile'>('dashboard');
   const [settingsTab, setSettingsTab] = useState('general');
 
   // Filters State
@@ -47,6 +50,7 @@ const App: React.FC = () => {
   const [registrationLogs, setRegistrationLogs] = useState<RegistrationLog[]>([]);
   const [assignmentLogs, setAssignmentLogs] = useState<AssignmentLog[]>([]);
   const [workShifts, setWorkShifts] = useState<WorkShift[]>([]);
+  const [auditLogs, setAuditLogs] = useState<ActivityLog[]>([]);
   
   // Configs
   const [sections, setSections] = useState<string[]>(PHYSICAL_SECTIONS);
@@ -64,12 +68,13 @@ const App: React.FC = () => {
   // --- Effects ---
   useEffect(() => {
     const loadData = async () => {
-      const [fetchedBeds, fetchedDoctors, fetchedNurses, fetchedMeds, fetchedLogs] = await Promise.all([
+      const [fetchedBeds, fetchedDoctors, fetchedNurses, fetchedMeds, fetchedLogs, fetchedAuditLogs] = await Promise.all([
         DataService.fetchBeds(),
         DataService.fetchStaff('doctors'),
         DataService.fetchStaff('nurses'),
         DataService.fetchMedications(),
-        DataService.fetchLogs()
+        DataService.fetchLogs(),
+        AuditService.fetchLogs()
       ]);
       
       setBeds(fetchedBeds.length ? fetchedBeds : INITIAL_BEDS);
@@ -77,8 +82,9 @@ const App: React.FC = () => {
       setNurses(fetchedNurses.length ? fetchedNurses : NURSES);
       setMedications(fetchedMeds.length ? fetchedMeds : INITIAL_MEDICATIONS);
       setPatientLog(fetchedLogs);
+      setAuditLogs(fetchedAuditLogs);
       
-      // Load other local storage data if not in DataService yet
+      // Load other local storage data
       const savedShifts = localStorage.getItem('er_shifts');
       if (savedShifts) setWorkShifts(JSON.parse(savedShifts));
 
@@ -144,16 +150,44 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
+  // Refresh Audit Logs helper
+  const refreshAuditLogs = async () => {
+      const logs = await AuditService.fetchLogs();
+      setAuditLogs(logs);
+  };
+
   // --- Handlers ---
   const handleLogin = (user: UserProfile) => {
+    // Load saved preferences if they exist
+    const savedPrefs = localStorage.getItem(`er_prefs_${user.id}`);
+    if (savedPrefs) {
+        user.preferences = JSON.parse(savedPrefs);
+    }
+    
     setCurrentUser(user);
-    if (user.role === 'Admin') setCurrentView('dashboard');
-    else if (user.role === 'Nurse') setCurrentView('table');
-    else setCurrentView('map');
+    AuditService.log(user, 'LOGIN', `Prisijungė prie sistemos`);
+    
+    // Respect default view preference
+    if (user.preferences?.defaultView) {
+        setCurrentView(user.preferences.defaultView as any);
+    } else {
+        if (user.role === 'Admin') setCurrentView('dashboard');
+        else if (user.role === 'Nurse') setCurrentView('table');
+        else setCurrentView('map');
+    }
   };
 
   const handleLogout = () => {
+    if (currentUser) AuditService.log(currentUser, 'LOGOUT', `Atsijungė nuo sistemos`);
     setCurrentUser(null);
+    setIsSidebarOpen(false);
+  };
+
+  const handleMenuClick = (view: typeof currentView, tab?: string) => {
+      setCurrentView(view);
+      if (tab) setSettingsTab(tab);
+      setIsSidebarOpen(false);
+      if (view === 'audit') refreshAuditLogs();
   };
 
   const updateBeds = (newBeds: Bed[]) => setBeds(newBeds);
@@ -161,7 +195,19 @@ const App: React.FC = () => {
   const updateNurses = (newNurses: Staff[]) => setNurses(newNurses);
   const updateMedications = (newMeds: MedicationItem[]) => setMedications(newMeds);
 
+  // Update user profile (e.g. phone number)
+  const updateCurrentUser = (updatedUser: UserProfile) => {
+      setCurrentUser(updatedUser);
+      // Also update the source list (doctors/nurses)
+      if (updatedUser.role === 'Doctor') {
+          setDoctors(prev => prev.map(d => d.id === updatedUser.id ? { ...d, phone: updatedUser.phone, preferences: updatedUser.preferences } : d));
+      } else if (updatedUser.role === 'Nurse') {
+          setNurses(prev => prev.map(n => n.id === updatedUser.id ? { ...n, phone: updatedUser.phone, preferences: updatedUser.preferences } : n));
+      }
+  };
+
   const handleResetData = () => {
+      if (currentUser) AuditService.log(currentUser, 'RESET_DATA', 'Atstatyti pradiniai duomenys');
       setBeds(INITIAL_BEDS);
       setDoctors(DOCTORS);
       setNurses(NURSES);
@@ -178,6 +224,7 @@ const App: React.FC = () => {
   const handleBedUpdate = (updatedBed: Bed) => {
       setBeds(prev => prev.map(b => b.id === updatedBed.id ? updatedBed : b));
       setSelectedBed(null);
+      if (currentUser) AuditService.log(currentUser, 'UPDATE_BED', `Atnaujinta lova ${updatedBed.label}`, { bedId: updatedBed.id });
   };
 
   const calculateDuration = (arrivalTime: string) => {
@@ -212,6 +259,8 @@ const App: React.FC = () => {
 
     setPatientLog(prev => [logEntry, ...prev]);
 
+    if (currentUser) AuditService.log(currentUser, 'DISCHARGE', `Išrašytas pacientas ${bed.patient.name} iš lovos ${bed.label}`);
+
     const updatedBed: Bed = {
         ...bed,
         status: PatientStatus.CLEANING,
@@ -229,10 +278,12 @@ const App: React.FC = () => {
           status: PatientStatus.EMPTY
       };
       setBeds(prev => prev.map(b => b.id === bed.id ? updatedBed : b));
+      if (currentUser) AuditService.log(currentUser, 'CLEAN_BED', `Lova ${bed.label} pažymėta kaip išvalyta`);
   };
 
   const handleStatusChange = (bed: Bed, newStatus: PatientStatus) => {
       setBeds(prev => prev.map(b => b.id === bed.id ? { ...b, status: newStatus } : b));
+      if (currentUser) AuditService.log(currentUser, 'STATUS_CHANGE', `Lovos ${bed.label} statusas: ${bed.status} -> ${newStatus}`);
   };
 
   const handleTriageSubmit = (data: { name: string; symptoms: string; triageCategory: TriageCategory; bedId: string; assignedDoctorId?: string }) => {
@@ -272,6 +323,7 @@ const App: React.FC = () => {
               timestamp: now.toISOString()
           };
           setRegistrationLogs(prev => [...prev, regLog]);
+          AuditService.log(currentUser, 'TRIAGE', `Užregistruotas pacientas ${data.name} į lovą (ID: ${data.bedId})`);
       }
 
       if (data.assignedDoctorId) {
@@ -297,6 +349,8 @@ const App: React.FC = () => {
           alert('Negalima perkelti į užimtą lovą!');
           return;
       }
+
+      if (currentUser) AuditService.log(currentUser, 'MOVE_PATIENT', `Perkeltas pacientas ${fromBed.patient.name} iš ${fromBed.label} į ${toBed.label}`);
 
       setBeds(prev => prev.map(b => {
           if (b.id === fromBedId) {
@@ -367,8 +421,7 @@ const App: React.FC = () => {
   const hasActiveFilters = searchQuery || filterStatus !== 'ALL' || filterDoctor !== 'ALL' || filterNurse !== 'ALL' || filterGroup !== 'ALL';
 
   const navigate = (view: any, tab?: string) => {
-      setCurrentView(view);
-      if (tab) setSettingsTab(tab);
+      handleMenuClick(view, tab);
   };
 
   if (!currentUser) {
@@ -378,51 +431,64 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-slate-950 text-slate-200 overflow-hidden font-sans">
       
+      {/* Mobile Backdrop Overlay */}
+      {isSidebarOpen && (
+        <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-200"
+            onClick={() => setIsSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* Sidebar Navigation */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">ER Flow</h1>
-             <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400"><Menu size={20}/></button>
+             <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white transition"><X size={24}/></button>
          </div>
          
-         <div className="p-4 border-b border-slate-800 bg-slate-800/50">
+         <div className="p-4 border-b border-slate-800 bg-slate-800/50 cursor-pointer hover:bg-slate-800 transition group" onClick={() => handleMenuClick('profile')}>
              <div className="flex items-center gap-3 mb-2">
                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${currentUser.role === 'Doctor' ? 'bg-blue-600' : currentUser.role === 'Nurse' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
                      {currentUser.name.substring(0, 2).toUpperCase()}
                  </div>
                  <div className="overflow-hidden">
-                     <p className="font-bold truncate">{currentUser.name}</p>
+                     <p className="font-bold truncate group-hover:text-blue-400 transition">{currentUser.name}</p>
                      <p className="text-xs text-slate-400 uppercase">{currentUser.role === 'Admin' ? 'Administratorius' : currentUser.role === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}</p>
                  </div>
              </div>
-             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-1.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700 rounded transition border border-slate-700">
+             <button onClick={(e) => { e.stopPropagation(); handleLogout(); }} className="w-full flex items-center justify-center gap-2 py-1.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700 rounded transition border border-slate-700">
                  <LogOut size={12}/> Atsijungti
              </button>
          </div>
 
          <nav className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
              {currentUser.role === 'Admin' && (
-                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                 <button onClick={() => handleMenuClick('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                      <LayoutDashboard size={18} /> Suvestinė
                  </button>
              )}
-             <button onClick={() => setCurrentView('map')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'map' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+             <button onClick={() => handleMenuClick('map')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'map' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                  <Grid size={18} /> Lovų Žemėlapis
              </button>
-             <button onClick={() => setCurrentView('table')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'table' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+             <button onClick={() => handleMenuClick('table')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'table' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                  <List size={18} /> Sąrašas
              </button>
-             <button onClick={() => setCurrentView('tasks')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'tasks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+             <button onClick={() => handleMenuClick('tasks')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'tasks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                  <ClipboardList size={18} /> Užduotys
              </button>
-             <button onClick={() => setCurrentView('shift')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'shift' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+             <button onClick={() => handleMenuClick('shift')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'shift' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                  <CalendarClock size={18} /> Pamainos
              </button>
-             <button onClick={() => setCurrentView('reports')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                 <ClipboardList size={18} /> Ataskaitos
+             <button onClick={() => handleMenuClick('reports')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                 <FileBarChart size={18} /> Ataskaitos
              </button>
              <div className="pt-4 mt-4 border-t border-slate-800">
-                 <button onClick={() => { setCurrentView('settings'); setSettingsTab('general'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'settings' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                 {currentUser.role === 'Admin' && (
+                    <button onClick={() => handleMenuClick('audit')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'audit' ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                        <ShieldCheck size={18} /> Auditas
+                    </button>
+                 )}
+                 <button onClick={() => handleMenuClick('settings', 'general')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${currentView === 'settings' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                      <Settings size={18} /> Nustatymai
                  </button>
              </div>
@@ -433,7 +499,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
           {/* Top Mobile Bar */}
           <div className="md:hidden bg-slate-900 p-4 border-b border-slate-800 flex justify-between items-center z-20">
-              <button onClick={() => setIsSidebarOpen(true)} className="text-slate-400"><Menu size={24}/></button>
+              <button onClick={() => setIsSidebarOpen(true)} className="text-slate-400 hover:text-white transition"><Menu size={24}/></button>
               <h2 className="font-bold text-lg">ER Flow</h2>
               <div className="w-6"></div>
           </div>
@@ -537,6 +603,17 @@ const App: React.FC = () => {
                     onNavigate={navigate}
                     bulletinMessage={bulletinMessage}
                     onUpdateBulletin={setBulletinMessage}
+                  />
+              )}
+              {currentView === 'audit' && currentUser.role === 'Admin' && (
+                  <AuditLogView logs={auditLogs} />
+              )}
+              {currentView === 'profile' && (
+                  <UserProfileView 
+                    user={currentUser} 
+                    onUpdateUser={updateCurrentUser}
+                    patientLogs={patientLog}
+                    specializations={specializations}
                   />
               )}
               {currentView === 'map' && (

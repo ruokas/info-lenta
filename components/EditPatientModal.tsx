@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Bed, PatientStatus, TriageCategory, Staff, UserProfile, MedicationOrder, MedicationStatus, ClinicalAction, ActionType, MedicationItem, WorkShift, Vitals, MedicationProtocol } from '../types';
 import { X, User, Activity, Stethoscope, AlertCircle, FileText, UserPlus, Trash2, AlertTriangle, Pill, Plus, CheckCircle, XCircle, Package, ClipboardList, RotateCcw, Microscope, FileImage, Clock, Waves, HeartPulse, Sparkles, Wind, Thermometer, Brain, MapPin, Users, Mic, MicOff } from 'lucide-react';
 import { STATUS_COLORS } from '../constants';
+import { AuditService } from '../services/AuditService'; // NEW
 
 interface EditPatientModalProps {
   bed: Bed;
@@ -204,6 +205,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     const now = new Date();
     const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
     setFormData(prev => ({ ...prev, status: PatientStatus.WAITING_EXAM, patient: { id: Date.now().toString(), name: '', symptoms: '', triageCategory: 0 as TriageCategory, arrivalTime: timeString, medications: [], actions: [], vitals: { lastUpdated: new Date().toISOString() } } }));
+    AuditService.log(currentUser, 'ADMIT_PATIENT', `Registruojamas naujas pacientas į lovą ${bed.label}`);
   };
 
   const calculateArpaSuggestions = () => {
@@ -215,7 +217,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
 
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave(formData); };
   const handleCloseAttempt = () => { if (hasUnsavedChanges) setIsDiscardConfirmOpen(true); else onClose(); };
-  const handleConfirmClear = () => { onSave({ ...formData, patient: undefined, status: PatientStatus.CLEANING, comment: '', assignedDoctorId: undefined }); };
+  const handleConfirmClear = () => { 
+      onSave({ ...formData, patient: undefined, status: PatientStatus.CLEANING, comment: '', assignedDoctorId: undefined }); 
+      AuditService.log(currentUser, 'CLEAR_BED', `Atlaisvinta lova ${bed.label}`);
+  };
 
   const addAction = (type: ActionType, name: string) => {
     if (!formData.patient) return;
@@ -224,13 +229,21 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     const newAction: ClinicalAction = { id: `act-${Date.now()}`, type, name, isCompleted: false, requestedAt: requestedAtStr };
     setFormData(prev => ({ ...prev, patient: { ...prev.patient!, actions: [...(prev.patient!.actions || []), newAction] } }));
     setNewActionName('');
+    AuditService.log(currentUser, 'ADD_ACTION', `Paskirtas veiksmas: ${name} (${type}) pacientui ${formData.patient.name}`);
   };
   const toggleAction = (actionId: string) => {
     if (!formData.patient?.actions) return;
     const updatedActions = formData.patient.actions.map(a => a.id === actionId ? { ...a, isCompleted: !a.isCompleted, completedAt: !a.isCompleted ? new Date().toISOString() : undefined } : a);
     setFormData(prev => ({ ...prev, patient: { ...prev.patient!, actions: updatedActions } }));
+    
+    const action = formData.patient.actions.find(a => a.id === actionId);
+    if(action) AuditService.log(currentUser, action.isCompleted ? 'UNDO_ACTION' : 'COMPLETE_ACTION', `${action.isCompleted ? 'Atšauktas' : 'Atliktas'} veiksmas: ${action.name}`);
   };
-  const removeAction = (actionId: string) => { setFormData(prev => ({ ...prev, patient: { ...prev.patient!, actions: prev.patient!.actions!.filter(a => a.id !== actionId) } })); };
+  const removeAction = (actionId: string) => { 
+      const action = formData.patient?.actions?.find(a => a.id === actionId);
+      if(action) AuditService.log(currentUser, 'REMOVE_ACTION', `Pašalintas veiksmas: ${action.name}`);
+      setFormData(prev => ({ ...prev, patient: { ...prev.patient!, actions: prev.patient!.actions!.filter(a => a.id !== actionId) } })); 
+  };
 
   const calculateReminderTime = () => { if (!enableReminder) return undefined; const now = new Date(); now.setHours(now.getHours() + reminderHours); return now.toISOString(); };
   const addMedication = (name: string = newMedName, dose: string = newMedDose, route: string = newMedRoute) => {
@@ -238,6 +251,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
     const newOrder: MedicationOrder = { id: `med-${Date.now()}-${Math.random()}`, name, dose, route, orderedBy: currentUser.id, orderedAt: new Date().toISOString(), status: MedicationStatus.PENDING, reminderAt: calculateReminderTime() };
     setFormData(prev => ({ ...prev, patient: { ...prev.patient!, medications: [...(prev.patient!.medications || []), newOrder] } }));
     setNewMedName(''); setNewMedDose(''); setShowSuggestions(false);
+    AuditService.log(currentUser, 'ADD_MED', `Paskirtas vaistas: ${name} ${dose} ${route} pacientui ${formData.patient.name}`);
   };
 
   const applyProtocol = (protocol: MedicationProtocol) => {
@@ -269,12 +283,16 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ bed, beds, doctors,
         actions: [...(prev.patient!.actions || []), ...newActions]
       }
     }));
+    AuditService.log(currentUser, 'APPLY_PROTOCOL', `Pritaikytas protokolas: ${protocol.name} pacientui ${formData.patient.name}`);
   };
 
   const updateMedicationStatus = (medId: string, status: MedicationStatus) => {
     if (!formData.patient?.medications) return;
     const updatedMeds = formData.patient.medications.map(med => med.id === medId ? { ...med, status, administeredBy: status === MedicationStatus.GIVEN ? currentUser.id : undefined, administeredAt: status === MedicationStatus.GIVEN ? new Date().toISOString() : undefined } : med);
     setFormData(prev => ({ ...prev, patient: { ...prev.patient!, medications: updatedMeds } }));
+    
+    const med = formData.patient.medications.find(m => m.id === medId);
+    if(med) AuditService.log(currentUser, 'UPDATE_MED_STATUS', `Vaisto ${med.name} statusas: ${status}`);
   };
   const requestMedStatusChange = (med: MedicationOrder, status: MedicationStatus) => { setMedActionConfirm({ id: med.id, status, name: med.name }); };
   const confirmMedStatusChange = () => { if (!medActionConfirm) return; updateMedicationStatus(medActionConfirm.id, medActionConfirm.status); setMedActionConfirm(null); };
