@@ -504,25 +504,6 @@ const App: React.FC = () => {
               <div className="w-6"></div>
           </div>
 
-          {/* Desktop User Bar */}
-          <div className="hidden md:flex items-center justify-end gap-4 bg-slate-900 px-4 py-3 border-b border-slate-800 z-20">
-              <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${currentUser.role === 'Doctor' ? 'bg-blue-600' : currentUser.role === 'Nurse' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
-                      {currentUser.name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div className="text-left">
-                      <p className="font-bold leading-tight">{currentUser.name}</p>
-                      <p className="text-xs text-slate-400 uppercase leading-tight">{currentUser.role === 'Admin' ? 'Administratorius' : currentUser.role === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}</p>
-                  </div>
-              </div>
-              <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition"
-              >
-                  <LogOut size={14}/> Atsijungti
-              </button>
-          </div>
-
           {/* Bulletin Banner */}
           {bulletinMessage && (
             <div className="bg-yellow-600 text-white px-4 py-2 text-sm font-bold flex items-center gap-2 animate-pulse shrink-0">
@@ -603,10 +584,33 @@ const App: React.FC = () => {
                 </div>
 
                 {hasActiveFilters && (
-                    <button onClick={clearFilters} className="p-2 text-slate-500 hover:text-white bg-slate-800 rounded-lg md:ml-auto">
+                    <button onClick={clearFilters} className="p-2 text-slate-500 hover:text-white bg-slate-800 rounded-lg">
                         <X size={16}/>
                     </button>
                 )}
+
+                <div className="hidden md:flex items-center gap-3 md:ml-auto">
+                    <button
+                        onClick={() => handleMenuClick('profile')}
+                        className="flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition text-left"
+                        aria-label="Atidaryti profilį"
+                    >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${currentUser.role === 'Doctor' ? 'bg-blue-600' : currentUser.role === 'Nurse' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
+                            {currentUser.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="text-left">
+                            <p className="font-bold leading-tight">{currentUser.name}</p>
+                            <p className="text-xs text-slate-400 uppercase leading-tight">{currentUser.role === 'Admin' ? 'Administratorius' : currentUser.role === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}</p>
+                        </div>
+                    </button>
+
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition"
+                    >
+                        <LogOut size={14}/> Atsijungti
+                    </button>
+                </div>
             </div>
           )}
 
