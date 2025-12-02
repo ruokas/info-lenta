@@ -115,18 +115,19 @@ export const DataService = {
   },
 
   // --- SUBSCRIPTIONS (Real-time) ---
-  subscribeToBeds(callback: (beds: Bed[]) => void) {
-    if (!isOnline || !supabase) return { unsubscribe: () => {} };
+    subscribeToBeds(callback: (beds: Bed[]) => void) {
+      if (!isOnline || !supabase) return { unsubscribe: () => {} };
 
-    const subscription = supabase
-      .channel('public:beds')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'beds', filter: 'id=eq.current_beds' }, (payload) => {
-        if (payload.new && payload.new.data) {
-          callback(payload.new.data);
-        }
-      })
-      .subscribe();
+      const client = supabase;
+      const subscription = client
+        .channel('public:beds')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'beds', filter: 'id=eq.current_beds' }, (payload) => {
+          if (payload.new && payload.new.data) {
+            callback(payload.new.data);
+          }
+        })
+        .subscribe();
 
-    return { unsubscribe: () => supabase.removeChannel(subscription) };
-  }
-};
+      return { unsubscribe: () => client.removeChannel(subscription) };
+    }
+  };
