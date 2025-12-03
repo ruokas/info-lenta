@@ -14,11 +14,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
-    // Optional: Load user from localStorage if you want persistence
-    // useEffect(() => {
-    //   const savedUser = localStorage.getItem('er_user');
-    //   if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    // }, []);
+    // Load user from localStorage if you want persistence
+    useEffect(() => {
+        const savedUser = localStorage.getItem('er_user');
+        if (savedUser) setCurrentUser(JSON.parse(savedUser));
+    }, []);
 
     const login = (user: UserProfile) => {
         // Load saved preferences if they exist
@@ -29,18 +29,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         setCurrentUser(user);
         AuditService.log(user, 'LOGIN', `Prisijungė prie sistemos`);
-        // localStorage.setItem('er_user', JSON.stringify(user));
+        localStorage.setItem('er_user', JSON.stringify(user));
     };
 
     const logout = () => {
         if (currentUser) AuditService.log(currentUser, 'LOGOUT', `Atsijungė nuo sistemos`);
         setCurrentUser(null);
-        // localStorage.removeItem('er_user');
+        localStorage.removeItem('er_user');
     };
 
     const updateUser = (updatedUser: UserProfile) => {
         setCurrentUser(updatedUser);
-        // localStorage.setItem('er_user', JSON.stringify(updatedUser));
+        localStorage.setItem('er_user', JSON.stringify(updatedUser));
     };
 
     return (

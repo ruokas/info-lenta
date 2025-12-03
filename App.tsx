@@ -1,17 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { AppRoutes } from './src/routes';
 import LoginView from './pages/LoginView';
-import BedTableView from './pages/BedTableView';
-import BedMapView from './pages/BedMapView';
 import EditPatientModal from './components/EditPatientModal';
 import TriageModal from './components/TriageModal';
-import ShiftManagerView from './pages/ShiftManagerView';
-import ReportsView from './pages/ReportsView';
-import AdminDashboardView from './pages/AdminDashboardView';
-import TasksView from './pages/TasksView';
-import SettingsView from './pages/SettingsView';
-import AuditLogView from './pages/AuditLogView';
-import UserProfileView from './pages/UserProfileView';
 import { AuditService } from './services/AuditService';
 import {
     Bed, Staff, PatientLogEntry, UserProfile, MedicationItem,
@@ -494,95 +486,35 @@ const App: React.FC = () => {
 
                 {/* Content Views */}
                 <div className="flex-1 overflow-hidden relative">
-                    <Routes>
-                        <Route path="/dashboard" element={
-                            currentUser.role === 'Admin' ? (
-                                <AdminDashboardView
-                                    beds={beds}
-                                    doctors={doctors}
-                                    nurses={nurses}
-                                    patientLogs={patientLog}
-                                    registrationLogs={registrationLogs}
-                                    onNavigate={handleMenuClick}
-                                    bulletinMessage={bulletinMessage}
-                                    onUpdateBulletin={setBulletinMessage}
-                                />
-                            ) : <Navigate to="/map" />
-                        } />
-                        <Route path="/audit" element={
-                            currentUser.role === 'Admin' ? (
-                                <AuditLogView logs={auditLogs} />
-                            ) : <Navigate to="/map" />
-                        } />
-                        <Route path="/profile" element={
-                            <UserProfileView
-                                user={currentUser}
-                                onUpdateUser={handleUpdateUser}
-                                patientLogs={patientLog}
-                                specializations={specializations}
-                            />
-                        } />
-                        <Route path="/map" element={
-                            <BedMapView
-                                beds={filteredBeds}
-                                doctors={doctors}
-                                nurses={nurses}
-                                onBedClick={setSelectedBed}
-                                onMovePatient={handleMovePatient}
-                                onCleanBed={handleCleanBed}
-                            />
-                        } />
-                        <Route path="/table" element={
-                            <BedTableView
-                                beds={filteredBeds}
-                                doctors={doctors}
-                                nurses={nurses}
-                                onRowClick={setSelectedBed}
-                                onDischarge={handleDischarge}
-                                onStatusChange={handleStatusChange}
-                                onCleanBed={handleCleanBed}
-                            />
-                        } />
-                        <Route path="/tasks" element={
-                            <TasksView
-                                beds={beds}
-                                doctors={doctors}
-                                currentUser={currentUser}
-                                onUpdateBed={handleBedUpdate}
-                            />
-                        } />
-                        <Route path="/shift" element={
-                            <ShiftManagerView
-                                doctors={doctors}
-                                setDoctors={updateDoctors}
-                                nurses={nurses}
-                                setNurses={updateNurses}
-                                beds={beds}
-                                patientLogs={patientLog}
-                                assignmentLogs={assignmentLogs}
-                                workShifts={workShifts}
-                                setWorkShifts={setWorkShifts}
-                                registrationLogs={registrationLogs}
-                                sections={sections}
-                                specializations={specializations}
-                                skills={skills}
-                            />
-                        } />
-                        <Route path="/reports" element={
-                            <ReportsView
-                                registrationLogs={registrationLogs}
-                                nurses={nurses}
-                                patientLogs={patientLog}
-                                doctors={doctors}
-                            />
-                        } />
-                        <Route path="/settings" element={
-                            <div className="absolute inset-0 overflow-auto custom-scrollbar">
-                                <SettingsView initialTab={settingsTab} />
-                            </div>
-                        } />
-                        <Route path="*" element={<Navigate to="/map" />} />
-                    </Routes>
+                    <AppRoutes
+                        currentUser={currentUser}
+                        beds={beds}
+                        doctors={doctors}
+                        nurses={nurses}
+                        patientLog={patientLog}
+                        registrationLogs={registrationLogs}
+                        assignmentLogs={assignmentLogs}
+                        workShifts={workShifts}
+                        auditLogs={auditLogs}
+                        sections={sections}
+                        specializations={specializations}
+                        skills={skills}
+                        bulletinMessage={bulletinMessage}
+                        settingsTab={settingsTab}
+                        filteredBeds={filteredBeds}
+                        onNavigate={handleMenuClick}
+                        onUpdateBulletin={setBulletinMessage}
+                        onUpdateUser={handleUpdateUser}
+                        onBedClick={setSelectedBed}
+                        onMovePatient={handleMovePatient}
+                        onCleanBed={handleCleanBed}
+                        onDischarge={handleDischarge}
+                        onStatusChange={handleStatusChange}
+                        onUpdateBed={handleBedUpdate}
+                        updateDoctors={updateDoctors}
+                        updateNurses={updateNurses}
+                        setWorkShifts={setWorkShifts}
+                    />
                 </div>
 
                 {/* Floating Action Button (FAB) for Triage */}
