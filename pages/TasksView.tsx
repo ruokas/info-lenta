@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Bed, Staff, UserProfile, MedicationStatus, PatientStatus } from '../types';
+import { supabase } from '../lib/supabaseClient';
+import { Bed, Staff, UserProfile, MedicationStatus, PatientStatus, Action } from '../types';
 import { TRIAGE_COLORS, STATUS_COLORS } from '../constants';
 import { ClipboardList, Filter, Search, Pill, Microscope, FileImage, Activity, Clock, CheckCircle, ArrowRight, User, Stethoscope, Syringe, Waves, HeartPulse, Sparkles } from 'lucide-react';
 
@@ -34,6 +35,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
   const defaultSection = currentUser.role === 'Nurse' && currentUser.assignedSection ? currentUser.assignedSection : 'ALL';
   
   // Initialize state from localStorage or defaults
+  const [localBeds, setLocalBeds] = useState(beds);
   const [filterSection, setFilterSection] = useState(() => localStorage.getItem('er_tasks_filter_section') || defaultSection);
   const [filterDoctor, setFilterDoctor] = useState(() => localStorage.getItem('er_tasks_filter_doctor') || 'ALL');
   const [filterType, setFilterType] = useState<'ALL' | 'MEDS' | 'ACTIONS'>(() => (localStorage.getItem('er_tasks_filter_type') as any) || 'ALL');
@@ -42,6 +44,32 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
   const [completingIds, setCompletingIds] = useState<string[]>([]); // For animation
 
   // Persist filters to localStorage whenever they change
+  useEffect(() => {
+    setLocalBeds(beds);
+  }, [beds]);
+
+  useEffect(() => {
+    const channel = supabase.channel('public:patients:tasks');
+    channel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, (payload) => {
+        setLocalBeds(prevBeds => {
+            const newBed = payload.new as Bed;
+            const index = prevBeds.findIndex(b => b.id === newBed.id);
+            if (index > -1) {
+                const newBeds = [...prevBeds];
+                newBeds[index] = newBed;
+                return newBeds;
+            }
+            return [...prevBeds, newBed];
+        });
+      })
+      .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('er_tasks_filter_section', filterSection);
     localStorage.setItem('er_tasks_filter_doctor', filterDoctor);
@@ -54,7 +82,7 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
     const allTasks: TaskItem[] = [];
     const now = new Date().getTime();
 
-    beds.forEach(bed => {
+    localBeds.forEach(bed => {
       // 1. Bed Cleaning Tasks
       if (bed.status === PatientStatus.CLEANING) {
          allTasks.push({
@@ -176,44 +204,50 @@ const TasksView: React.FC<TasksViewProps> = ({ beds, doctors, currentUser, onUpd
       }
   };
 
-  const handleCompleteTask = (task: TaskItem) => {
-      // Add to completing state for animation
+  const handleCompleteTask = async (task: TaskItem) => {
       setCompletingIds(prev => [...prev, task.id]);
 
-      setTimeout(() => {
-          // Perform actual update
-          const updatedBed = { ...task.bed };
+      const updatedBed = { ...task.bed };
+      let updatedPatientData = {};
 
-          if (task.type === 'CLEANING') {
-              updatedBed.status = PatientStatus.EMPTY;
-              updatedBed.patient = undefined;
-              updatedBed.assignedDoctorId = undefined;
-              updatedBed.comment = '';
-          } 
-          else if (updatedBed.patient) {
-              if (task.type === 'MEDICATION') {
-                  updatedBed.patient.medications = updatedBed.patient.medications?.map(m => 
-                      m.id === task.id ? { 
-                          ...m, 
-                          status: MedicationStatus.GIVEN, 
-                          administeredBy: currentUser.id, 
-                          administeredAt: new Date().toISOString() 
-                      } : m
-                  );
-              } else if (task.type === 'ACTION') {
-                  updatedBed.patient.actions = updatedBed.patient.actions?.map(a => 
-                      a.id === task.id ? { 
-                          ...a, 
-                          isCompleted: true, 
-                          completedAt: new Date().toISOString() 
-                      } : a
-                  );
-              }
+      if (task.type === 'CLEANING') {
+          updatedPatientData = { status: PatientStatus.EMPTY, patient: null, assignedDoctorId: null, comment: '' };
+      } else if (updatedBed.patient) {
+          if (task.type === 'MEDICATION') {
+              const medications = updatedBed.patient.medications?.map(m =>
+                  m.id === task.id ? { ...m, status: MedicationStatus.GIVEN, administeredBy: currentUser.id, administeredAt: new Date().toISOString() } : m
+              );
+              updatedPatientData = { patient: { ...updatedBed.patient, medications } };
+          } else if (task.type === 'ACTION') {
+              const actions = updatedBed.patient.actions?.map(a =>
+                  a.id === task.id ? { ...a, isCompleted: true, completedAt: new Date().toISOString() } : a
+              );
+              updatedPatientData = { patient: { ...updatedBed.patient, actions } };
           }
+      }
 
-          onUpdateBed(updatedBed);
-          setCompletingIds(prev => prev.filter(id => id !== task.id));
-      }, 500); // Wait for animation
+      const { error } = await supabase.from('patients').update(updatedPatientData).eq('id', task.bed.id);
+
+      if (error) {
+          console.error("Error completing task:", error);
+          setCompletingIds(prev => prev.filter(id => id !== task.id)); // Revert on error
+      }
+      // No need to call onUpdateBed; real-time listener will handle it.
+  };
+
+  const handleAddTask = async (bedId: string, action: Action) => {
+    const { data: bed, error: fetchError } = await supabase.from('patients').select('patient').eq('id', bedId).single();
+    if (fetchError || !bed || !bed.patient) {
+        console.error("Error fetching patient for task addition:", fetchError);
+        return;
+    }
+
+    const updatedActions = [...(bed.patient.actions || []), action];
+    const { error } = await supabase.from('patients').update({ patient: { ...bed.patient, actions: updatedActions } }).eq('id', bedId);
+
+    if (error) {
+        console.error("Error adding task:", error);
+    }
   };
 
   // Unique sections for filter

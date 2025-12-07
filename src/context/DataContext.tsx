@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../../lib/supabaseClient';
 import {
     Bed, Staff, PatientLogEntry, MedicationItem,
     WorkShift, AssignmentLog, RegistrationLog,
@@ -6,12 +7,9 @@ import {
     StaffSpecialization, StaffSkill
 } from '../../types';
 import {
-    INITIAL_BEDS, DOCTORS, NURSES, INITIAL_MEDICATIONS,
     PHYSICAL_SECTIONS, INITIAL_PROTOCOLS, DEFAULT_SETTINGS,
     INITIAL_SPECIALIZATIONS, INITIAL_SKILLS
 } from '../../constants';
-import { DataService } from '../../services/DataService';
-import { AuditService } from '../../services/AuditService';
 import { useAuth } from './AuthContext';
 
 interface DataContextType {
@@ -56,10 +54,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { currentUser } = useAuth();
 
     // Data
-    const [beds, setBeds] = useState<Bed[]>(INITIAL_BEDS);
-    const [doctors, setDoctors] = useState<Staff[]>(DOCTORS);
-    const [nurses, setNurses] = useState<Staff[]>(NURSES);
-    const [medicationBank, setMedications] = useState<MedicationItem[]>(INITIAL_MEDICATIONS);
+    const [beds, setBeds] = useState<Bed[]>([]);
+    const [doctors, setDoctors] = useState<Staff[]>([]);
+    const [nurses, setNurses] = useState<Staff[]>([]);
+    const [medicationBank, setMedications] = useState<MedicationItem[]>([]);
     const [protocols, setProtocols] = useState<MedicationProtocol[]>(INITIAL_PROTOCOLS);
     const [patientLog, setPatientLog] = useState<PatientLogEntry[]>([]);
     const [registrationLogs, setRegistrationLogs] = useState<RegistrationLog[]>([]);
@@ -77,107 +75,76 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // --- Effects ---
     useEffect(() => {
-        const loadData = async () => {
-            const [fetchedBeds, fetchedDoctors, fetchedNurses, fetchedMeds, fetchedLogs, fetchedAuditLogs] = await Promise.all([
-                DataService.fetchBeds(),
-                DataService.fetchStaff('doctors'),
-                DataService.fetchStaff('nurses'),
-                DataService.fetchMedications(),
-                DataService.fetchLogs(),
-                AuditService.fetchLogs()
-            ]);
+        if (currentUser) {
+            const fetchInitialData = async () => {
+                const { data: bedsData, error: bedsError } = await supabase.from('patients').select('*');
+                if (bedsError) console.error('Error fetching beds:', bedsError);
+                else setBeds(bedsData as Bed[]);
 
-            setBeds(fetchedBeds.length ? fetchedBeds : INITIAL_BEDS);
-            setDoctors(fetchedDoctors.length ? fetchedDoctors : DOCTORS);
-            setNurses(fetchedNurses.length ? fetchedNurses : NURSES);
-            setMedications(fetchedMeds.length ? fetchedMeds : INITIAL_MEDICATIONS);
-            setPatientLog(fetchedLogs);
-            setAuditLogs(fetchedAuditLogs);
+                const { data: personnelData, error: personnelError } = await supabase.from('personnel').select('*, roles(name)');
+                if (personnelError) console.error('Error fetching personnel:', personnelError);
+                else {
+                    const allPersonnel = personnelData as any[];
+                    const doctors = allPersonnel.filter(p => p.roles.name === 'Doctor' || p.roles.name === 'Admin');
+                    const nurses = allPersonnel.filter(p => p.roles.name === 'Nurse' || p.roles.name === 'Charge Nurse');
+                    setDoctors(doctors);
+                    setNurses(nurses);
+                }
 
-            // Load other local storage data
-            const savedShifts = localStorage.getItem('er_shifts');
-            if (savedShifts) setWorkShifts(JSON.parse(savedShifts));
+                const { data: drugsData, error: drugsError } = await supabase.from('drugs').select('*');
+                if (drugsError) console.error('Error fetching drugs:', drugsError);
+                else setMedications(drugsData as MedicationItem[]);
 
-            const savedRegs = localStorage.getItem('er_registrations');
-            if (savedRegs) setRegistrationLogs(JSON.parse(savedRegs));
+                const { data: shiftsData, error: shiftsError } = await supabase.from('shifts').select('*');
+                if (shiftsError) console.error('Error fetching shifts:', shiftsError);
+                else setWorkShifts(shiftsData as WorkShift[]);
+            };
 
-            const savedAssigns = localStorage.getItem('er_assignments');
-            if (savedAssigns) setAssignmentLogs(JSON.parse(savedAssigns));
-
-            const savedBulletin = localStorage.getItem('er_bulletin');
-            if (savedBulletin) setBulletinMessage(savedBulletin);
-
-            const savedSections = localStorage.getItem('er_sections');
-            if (savedSections) setSections(JSON.parse(savedSections));
-
-            const savedSpecs = localStorage.getItem('er_specializations');
-            if (savedSpecs) setSpecializations(JSON.parse(savedSpecs));
-
-            const savedSkills = localStorage.getItem('er_skills');
-            if (savedSkills) setSkills(JSON.parse(savedSkills));
-
-            const savedProtocols = localStorage.getItem('er_protocols');
-            if (savedProtocols) setProtocols(JSON.parse(savedProtocols));
-
-            const savedSettings = localStorage.getItem('er_settings');
-            if (savedSettings) setAppSettings(JSON.parse(savedSettings));
-        };
-        loadData();
-    }, []);
-
-    // Save Effects
-    useEffect(() => { DataService.saveBeds(beds); }, [beds]);
-    useEffect(() => { DataService.saveStaff('doctors', doctors); }, [doctors]);
-    useEffect(() => { DataService.saveStaff('nurses', nurses); }, [nurses]);
-    useEffect(() => { DataService.saveMedications(medicationBank); }, [medicationBank]);
-    useEffect(() => { DataService.saveLogs(patientLog); }, [patientLog]);
-
-    useEffect(() => { localStorage.setItem('er_shifts', JSON.stringify(workShifts)); }, [workShifts]);
-    useEffect(() => { localStorage.setItem('er_registrations', JSON.stringify(registrationLogs)); }, [registrationLogs]);
-    useEffect(() => { localStorage.setItem('er_assignments', JSON.stringify(assignmentLogs)); }, [assignmentLogs]);
-    useEffect(() => { localStorage.setItem('er_bulletin', bulletinMessage); }, [bulletinMessage]);
-    useEffect(() => { localStorage.setItem('er_sections', JSON.stringify(sections)); }, [sections]);
-    useEffect(() => { localStorage.setItem('er_specializations', JSON.stringify(specializations)); }, [specializations]);
-    useEffect(() => { localStorage.setItem('er_skills', JSON.stringify(skills)); }, [skills]);
-    useEffect(() => { localStorage.setItem('er_protocols', JSON.stringify(protocols)); }, [protocols]);
-    useEffect(() => { localStorage.setItem('er_settings', JSON.stringify(appSettings)); }, [appSettings]);
+            fetchInitialData();
+        }
+    }, [currentUser]);
 
     // Subscription for Beds (Supabase Real-time)
     useEffect(() => {
-        const { unsubscribe } = DataService.subscribeToBeds((updatedBeds) => {
-            setBeds(updatedBeds);
-        });
-        return () => unsubscribe();
+        const channel = supabase.channel('public:patients');
+        channel
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, (payload) => {
+            setBeds(prevBeds => {
+                const newBed = payload.new as Bed;
+                const index = prevBeds.findIndex(b => b.id === newBed.id);
+                if (index > -1) {
+                    const newBeds = [...prevBeds];
+                    newBeds[index] = newBed;
+                    return newBeds;
+                }
+                return [...prevBeds, newBed];
+            });
+          })
+          .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     // Auto Refresh
     useEffect(() => {
         if (!autoRefresh) return;
         const interval = setInterval(async () => {
-            const fetchedBeds = await DataService.fetchBeds();
-            setBeds(fetchedBeds);
+            const { data: fetchedBeds, error } = await supabase.from('patients').select('*');
+            if (!error) setBeds(fetchedBeds as Bed[]);
         }, 60000);
         return () => clearInterval(interval);
     }, [autoRefresh]);
 
     // Refresh Audit Logs helper
     const refreshAuditLogs = async () => {
-        const logs = await AuditService.fetchLogs();
-        setAuditLogs(logs);
+        // This should be implemented to fetch logs from a Supabase table if needed
     };
 
     const resetData = () => {
-        if (currentUser) AuditService.log(currentUser, 'RESET_DATA', 'Atstatyti pradiniai duomenys');
-        setBeds(INITIAL_BEDS);
-        setDoctors(DOCTORS);
-        setNurses(NURSES);
-        setMedications(INITIAL_MEDICATIONS);
-        setPatientLog([]);
-        setRegistrationLogs([]);
-        setAssignmentLogs([]);
-        setWorkShifts([]);
-        setBulletinMessage('');
-        localStorage.clear();
+        // This function is now less relevant as data is not stored locally.
+        // It could be used to clear local state before a re-fetch, but a reload is simpler.
         window.location.reload();
     };
 

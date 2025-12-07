@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import { Staff, Bed, PatientLogEntry, AssignmentLog, WorkShift, PatientStatus, RegistrationLog, StaffSpecialization, StaffSkill } from '../types';
 import { Briefcase, Plus, X, CalendarClock, Trash2, UserPlus, MapPin, ClipboardList, AlertTriangle, Search, ChevronDown } from 'lucide-react';
 
@@ -32,13 +33,14 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   doctors, setDoctors, 
   nurses, setNurses,
   beds, patientLogs, assignmentLogs,
-  workShifts, setWorkShifts,
+  workShifts: initialWorkShifts, setWorkShifts,
   registrationLogs = [],
   sections,
   specializations,
   skills
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [workShifts, setLocalWorkShifts] = useState(initialWorkShifts);
 
   // Staff Management State
   const [nurseSearchQuery, setNurseSearchQuery] = useState('');
@@ -57,6 +59,20 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     
+    const shiftsChannel = supabase.channel('public:shifts');
+    shiftsChannel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, (payload) => {
+        // ... handle shift updates
+      })
+      .subscribe();
+
+    const personnelChannel = supabase.channel('public:personnel');
+    personnelChannel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'personnel' }, (payload) => {
+        // ... handle personnel updates
+      })
+      .subscribe();
+
     const handleClickOutside = (event: MouseEvent) => {
         if (nurseDropdownRef.current && !nurseDropdownRef.current.contains(event.target as Node)) {
             setShowNurseDropdown(false);
@@ -94,7 +110,7 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
 
   const { start: timelineStart, end: timelineEnd } = getTimelineRange();
 
-  const addShift = (doctorId: string, startHour: number, endHour: number) => {
+  const addShift = async (doctorId: string, startHour: number, endHour: number) => {
     const start = new Date(timelineStart);
     start.setHours(startHour, 0, 0, 0);
     
@@ -110,32 +126,34 @@ const ShiftManagerView: React.FC<ShiftManagerViewProps> = ({
     }
     
     const type = (startHour >= 20 || startHour < 6) ? 'NIGHT' : 'DAY';
-    const newShift: WorkShift = { 
-        id: `shift-${Date.now()}-${Math.random()}`, 
-        doctorId, 
-        start: start.toISOString(), 
-        end: end.toISOString(), 
-        type 
+    const newShift = {
+        personnel_id: doctorId,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
     };
     
-    const filtered = workShifts.filter(s => s.doctorId !== doctorId);
-    setWorkShifts([...filtered, newShift]);
+    const { error } = await supabase.from('shifts').insert(newShift);
+    if (error) console.error("Error adding shift:", error);
   };
 
-  const removeShift = (shiftId: string) => { 
-      setWorkShifts(workShifts.filter(s => s.id !== shiftId)); 
+  const removeShift = async (shiftId: string) => {
+      const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+      if (error) console.error("Error removing shift:", error);
   };
 
-  const updateShiftTime = (shiftId: string, field: 'start' | 'end', value: string) => {
+  const updateShiftTime = async (shiftId: string, field: 'start_time' | 'end_time', value: string) => {
      const [h, m] = value.split(':').map(Number);
-     setWorkShifts(workShifts.map(s => {
-         if (s.id === shiftId) { 
-             const d = new Date(field === 'start' ? s.start : s.end); 
-             d.setHours(h, m, 0, 0); 
-             return { ...s, [field]: d.toISOString() }; 
-         }
-         return s;
-     }));
+     const { data: shift, error: fetchError } = await supabase.from('shifts').select(field).eq('id', shiftId).single();
+     if (fetchError || !shift) {
+        console.error("Error fetching shift for update:", fetchError);
+        return;
+     }
+
+     const d = new Date(shift[field]);
+     d.setHours(h, m, 0, 0);
+
+     const { error } = await supabase.from('shifts').update({ [field]: d.toISOString() }).eq('id', shiftId);
+     if (error) console.error("Error updating shift time:", error);
   };
 
   const getPosition = (isoTime: string) => {

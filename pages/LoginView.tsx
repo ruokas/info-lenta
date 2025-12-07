@@ -1,20 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { Staff, UserProfile } from '../types';
-import { Activity, User, Stethoscope, Shield, Clock, ChevronRight, Hash } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import { UserProfile } from '../types';
+import { Activity, User, Stethoscope, Shield, Clock, ChevronRight, Hash, Mail, Lock } from 'lucide-react';
 
 interface LoginViewProps {
-  doctors: Staff[];
-  nurses: Staff[];
   onLogin: (user: UserProfile) => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ doctors, nurses, onLogin }) => {
-  const [activeRole, setActiveRole] = useState<'Doctor' | 'Nurse' | 'Admin'>('Doctor');
-  const [adminName, setAdminName] = useState('');
+const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Live Clock Effect
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -22,44 +21,39 @@ const LoginView: React.FC<LoginViewProps> = ({ doctors, nurses, onLogin }) => {
     return () => clearInterval(timer);
   }, []);
 
-  const handleStaffLogin = (staff: Staff) => {
-    const user: UserProfile = {
-      ...staff,
-      isAuthenticated: true,
-      loginTime: new Date().toISOString()
-    };
-    onLogin(user);
-  };
-
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminName.trim()) return;
-    const user: UserProfile = {
-      id: 'admin',
-      name: adminName,
-      role: 'Admin', // Changed from 'Assistant' to 'Admin'
-      isAuthenticated: true,
-      loginTime: new Date().toISOString()
-    };
-    onLogin(user);
-  };
+    setError(null);
 
-  // Theme configuration based on role
-  const getTheme = () => {
-    switch (activeRole) {
-      case 'Doctor': return { color: 'blue', icon: <Stethoscope size={24} />, label: 'Gydytojai' };
-      case 'Nurse': return { color: 'emerald', icon: <User size={24} />, label: 'Slaugytojos' };
-      case 'Admin': return { color: 'violet', icon: <Shield size={24} />, label: 'Administratorius' };
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setError(error.message);
+    } else if (data.user) {
+      const { data: userProfile, error: profileError } = await supabase
+        .from('personnel')
+        .select('*, roles(name)')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError) {
+        setError(profileError.message);
+      } else {
+        const user: UserProfile = {
+          id: userProfile.id,
+          name: userProfile.name,
+          role: userProfile.roles.name,
+          isAuthenticated: true,
+          loginTime: new Date().toISOString(),
+        };
+        onLogin(user);
+      }
     }
   };
 
-  const theme = getTheme();
-  
-  // Dynamic classes for colors
-  const activeTabClass = (role: string, color: string) => 
-    activeRole === role 
-      ? `bg-${color}-600 text-white shadow-lg shadow-${color}-900/50 border-${color}-500` 
-      : `bg-slate-800/50 text-slate-400 hover:bg-slate-800 border-transparent hover:text-slate-200`;
 
   return (
     <div className="flex h-screen w-full bg-slate-950 overflow-hidden font-sans text-slate-100 relative">
@@ -155,116 +149,56 @@ const LoginView: React.FC<LoginViewProps> = ({ doctors, nurses, onLogin }) => {
               </div>
            </div>
 
-           {/* Role Selector Tabs */}
-           <div className="mb-8">
-              <h2 className="text-slate-400 text-sm uppercase font-bold tracking-wider mb-4 flex items-center gap-2">
-                <span className="w-8 h-[1px] bg-slate-700"></span>
-                Pasirinkite profilį
-                <span className="flex-1 h-[1px] bg-slate-700"></span>
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                 <button 
-                   onClick={() => setActiveRole('Doctor')}
-                   className={`flex-1 py-4 px-6 rounded-xl border flex items-center justify-center gap-3 transition-all duration-300 ${activeTabClass('Doctor', 'blue')}`}
-                 >
-                   <Stethoscope size={20} />
-                   <span className="font-semibold">Gydytojas</span>
-                 </button>
-                 <button 
-                   onClick={() => setActiveRole('Nurse')}
-                   className={`flex-1 py-4 px-6 rounded-xl border flex items-center justify-center gap-3 transition-all duration-300 ${activeTabClass('Nurse', 'emerald')}`}
-                 >
-                   <User size={20} />
-                   <span className="font-semibold">Slaugytoja</span>
-                 </button>
-                 <button 
-                   onClick={() => setActiveRole('Admin')}
-                   className={`flex-1 py-4 px-6 rounded-xl border flex items-center justify-center gap-3 transition-all duration-300 ${activeTabClass('Admin', 'violet')}`}
-                 >
-                   <Shield size={20} />
-                   <span className="font-semibold">Admin</span>
-                 </button>
-              </div>
-           </div>
-
            {/* Content Area (Grid or Form) */}
-           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-[300px]">
-              
-              {activeRole === 'Admin' ? (
-                <div className="h-full flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                   <div className="w-full max-w-md bg-slate-900/80 border border-violet-500/30 p-8 rounded-2xl backdrop-blur-xl shadow-2xl">
-                      <div className="mb-6 flex justify-center">
-                         <div className="bg-violet-900/30 p-4 rounded-full border border-violet-500/30 shadow-[0_0_15px_rgba(139,92,246,0.2)]">
-                            <Hash size={32} className="text-violet-400" />
-                         </div>
-                      </div>
-                      <h3 className="text-xl font-bold text-center text-white mb-6">Administratoriaus prisijungimas</h3>
-                      <form onSubmit={handleAdminLogin} className="space-y-4">
-                         <div>
-                            <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Vardas</label>
-                            <input 
-                              type="text" 
-                              value={adminName}
-                              onChange={(e) => setAdminName(e.target.value)}
-                              placeholder="Įveskite vardą"
-                              className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none transition"
-                              autoFocus
-                            />
-                         </div>
-                         <button 
-                           type="submit"
-                           disabled={!adminName.trim()}
-                           className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-violet-900/40 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                         >
-                           Prisijungti
-                         </button>
-                      </form>
-                   </div>
+           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-[300px] flex flex-col items-center justify-center">
+              <div className="w-full max-w-md bg-slate-900/80 border border-slate-700/50 p-8 rounded-2xl backdrop-blur-xl shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="mb-6 flex justify-center">
+                  <div className="bg-slate-900/50 p-4 rounded-full border border-slate-700 shadow-[0_0_15px_rgba(148,163,184,0.1)]">
+                    <Shield size={32} className="text-slate-400" />
+                  </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-8">
-                   {(activeRole === 'Doctor' ? doctors : nurses).map((staff, idx) => {
-                     const isTriage = staff.assignedSection === 'Triažas';
-                     return (
-                     <button
-                       key={staff.id}
-                       onClick={() => handleStaffLogin(staff)}
-                       style={{ animationDelay: `${idx * 50}ms` }}
-                       className={`
-                         group relative p-6 rounded-2xl border text-left transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] animate-in fade-in zoom-in fill-mode-backwards
-                         ${activeRole === 'Doctor' 
-                            ? 'bg-slate-800/60 border-slate-700/50 hover:bg-blue-900/30 hover:border-blue-500/50 shadow-sm hover:shadow-blue-900/20' 
-                            : isTriage 
-                                ? 'bg-indigo-900/30 border-indigo-500/50 hover:bg-indigo-900/50 hover:border-indigo-400 shadow-md shadow-indigo-900/20'
-                                : 'bg-slate-800/60 border-slate-700/50 hover:bg-emerald-900/30 hover:border-emerald-500/50 shadow-sm hover:shadow-emerald-900/20'}
-                       `}
-                     >
-                        <div className="flex items-start justify-between mb-4">
-                           <div className={`
-                             w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shadow-lg ring-2 ring-opacity-20 ring-white relative
-                             ${activeRole === 'Doctor' 
-                                ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white' 
-                                : isTriage 
-                                    ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white'
-                                    : 'bg-gradient-to-br from-emerald-500 to-emerald-700 text-white'}
-                           `}>
-                              {staff.name.substring(0, 2).toUpperCase()}
-                           </div>
-                           <ChevronRight className={`opacity-0 group-hover:opacity-100 transition-opacity transform group-hover:translate-x-1 ${activeRole === 'Doctor' ? 'text-blue-400' : 'text-emerald-400'}`} />
-                        </div>
-                        <div>
-                           <div className="flex items-center gap-2">
-                             <p className="font-bold text-slate-100 text-lg leading-tight mb-1">{staff.name}</p>
-                             {isTriage && <span className="text-[10px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded shadow-sm shadow-indigo-500/50 animate-pulse">TRIAŽAS</span>}
-                           </div>
-                           <p className="text-xs uppercase font-medium text-slate-500 tracking-wider group-hover:text-slate-300 transition-colors">
-                             {activeRole === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}
-                           </p>
-                        </div>
-                     </button>
-                   )})}
-                </div>
-              )}
+                <h3 className="text-2xl font-bold text-center text-white mb-6">Prisijungimas</h3>
+                {error && <p className="text-red-400 text-sm text-center mb-4 bg-red-900/30 p-3 rounded-lg">{error}</p>}
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1 flex items-center gap-2">
+                      <Mail size={14} /> El. paštas
+                    </label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="jusu.pastas@ligonine.lt"
+                      className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1 flex items-center gap-2">
+                      <Lock size={14} /> Slaptažodis
+                    </label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950/50 border border-slate-700 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!email || !password}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-900/40 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Prisijungti
+                  </button>
+                </form>
+                 <p className="text-center text-sm text-slate-500 mt-6">
+                  Neturite paskyros? <a href="/signup" className="font-semibold text-blue-400 hover:underline">Registruokitės</a>
+                </p>
+              </div>
            </div>
         </div>
       </div>

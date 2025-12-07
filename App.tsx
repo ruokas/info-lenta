@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { AppRoutes } from './src/routes';
 import LoginView from './pages/LoginView';
+import SignUpView from './pages/SignUpView';
 import EditPatientModal from './components/EditPatientModal';
 import TriageModal from './components/TriageModal';
 import { AuditService } from './services/AuditService';
@@ -16,7 +17,7 @@ import { useData } from './src/context/DataContext';
 
 const App: React.FC = () => {
     // --- Context ---
-    const { currentUser, login, logout, updateUser: updateCurrentUser } = useAuth();
+    const { currentUser, loading, logout } = useAuth();
     const {
         beds, setBeds,
         doctors, setDoctors,
@@ -54,22 +55,10 @@ const App: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // --- Handlers ---
-    const handleLogin = (user: UserProfile) => {
-        login(user);
-
-        // Respect default view preference
-        if (user.preferences?.defaultView) {
-            navigate(`/${user.preferences.defaultView}`);
-        } else {
-            if (user.role === 'Admin') navigate('/dashboard');
-            else if (user.role === 'Nurse') navigate('/table');
-            else navigate('/map');
-        }
-    };
-
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
         setIsSidebarOpen(false);
+        navigate('/login');
     };
 
     const handleMenuClick = (view: string, tab?: string) => {
@@ -84,16 +73,6 @@ const App: React.FC = () => {
     const updateNurses = (newNurses: Staff[]) => setNurses(newNurses);
     const updateMedications = (newMeds: MedicationItem[]) => setMedications(newMeds);
 
-    // Update user profile (e.g. phone number)
-    const handleUpdateUser = (updatedUser: UserProfile) => {
-        updateCurrentUser(updatedUser);
-        // Also update the source list (doctors/nurses)
-        if (updatedUser.role === 'Doctor') {
-            setDoctors(prev => prev.map(d => d.id === updatedUser.id ? { ...d, phone: updatedUser.phone, preferences: updatedUser.preferences } : d));
-        } else if (updatedUser.role === 'Nurse') {
-            setNurses(prev => prev.map(n => n.id === updatedUser.id ? { ...n, phone: updatedUser.phone, preferences: updatedUser.preferences } : n));
-        }
-    };
 
     const handleBedUpdate = (updatedBed: Bed) => {
         setBeds(prev => prev.map(b => b.id === updatedBed.id ? updatedBed : b));
@@ -294,8 +273,18 @@ const App: React.FC = () => {
 
     const hasActiveFilters = searchQuery || filterStatus !== 'ALL' || filterDoctor !== 'ALL' || filterNurse !== 'ALL' || filterGroup !== 'ALL';
 
+    if (loading) {
+        return <div className="flex h-screen w-full bg-slate-950 text-slate-200 items-center justify-center">Loading...</div>;
+    }
+
     if (!currentUser) {
-        return <LoginView doctors={doctors} nurses={nurses} onLogin={handleLogin} />;
+        return (
+            <Routes>
+                <Route path="/login" element={<LoginView onLogin={() => {}} />} />
+                <Route path="/signup" element={<SignUpView onSignUp={() => {}} />} />
+                <Route path="*" element={<Navigate to="/login" />} />
+            </Routes>
+        );
     }
 
     return (
