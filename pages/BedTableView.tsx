@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { STATUS_COLORS, TRIAGE_COLORS } from '../constants';
 import { Home, Syringe, Clock, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Waves, HeartPulse, LogOut, Check, X, ChevronDown, User, Sparkles } from 'lucide-react';
@@ -16,11 +17,35 @@ interface BedTableViewProps {
 
 const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRowClick, onDischarge, onStatusChange, onCleanBed }) => {
   const [confirmDischargeId, setConfirmDischargeId] = useState<string | null>(null);
+  const [localBeds, setLocalBeds] = useState(beds);
+
+  useEffect(() => {
+    setLocalBeds(beds);
+  }, [beds]);
+
+  useEffect(() => {
+    const channel = supabase.channel('public:patients');
+    channel
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, (payload) => {
+        handleBedsUpdate(payload.new as Bed);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const handleBedsUpdate = (updatedBed: Bed) => {
+    setLocalBeds(prevBeds =>
+      prevBeds.map(bed => (bed.id === updatedBed.id ? updatedBed : bed))
+    );
+  };
 
   // Group beds by section (Section Name)
   const groupedBeds = React.useMemo(() => {
     const groups: Record<string, Bed[]> = {};
-    beds.forEach(bed => {
+    localBeds.forEach(bed => {
       if (!bed) return; // Skip null beds
       if (!groups[bed.section]) {
         groups[bed.section] = [];
@@ -28,7 +53,7 @@ const BedTableView: React.FC<BedTableViewProps> = ({ beds, doctors, nurses, onRo
       groups[bed.section].push(bed);
     });
     return groups;
-  }, [beds]);
+  }, [localBeds]);
 
   const getDoctorName = (id?: string) => doctors.find(d => d.id === id)?.name || '';
 

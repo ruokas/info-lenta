@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import { Bed, PatientStatus, Staff, MedicationStatus } from '../types';
 import { TRIAGE_COLORS, STATUS_COLORS } from '../constants';
 import { User, Stethoscope, AlertTriangle, Pill, Microscope, FileImage, ClipboardList, Activity, Waves, HeartPulse, Sparkles, Check } from 'lucide-react';
@@ -17,11 +18,33 @@ const BedMapView: React.FC<BedMapViewProps> = ({ beds, doctors, nurses, onBedCli
   const [dragOverBedId, setDragOverBedId] = useState<string | null>(null);
   const [animatingBeds, setAnimatingBeds] = useState<string[]>([]);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [localBeds, setLocalBeds] = useState(beds);
+
+  useEffect(() => {
+    setLocalBeds(beds);
+  }, [beds]);
 
   useEffect(() => {
       // Check for touch capability
       setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+      const channel = supabase.channel('public:patients');
+      channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, (payload) => {
+          handleBedsUpdate(payload.new as Bed);
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
   }, []);
+
+  const handleBedsUpdate = (updatedBed: Bed) => {
+    setLocalBeds(prevBeds =>
+      prevBeds.map(bed => (bed.id === updatedBed.id ? updatedBed : bed))
+    );
+  };
 
   const getDoctorInitials = (id?: string) => {
       const name = doctors.find(d => d.id === id)?.name;
