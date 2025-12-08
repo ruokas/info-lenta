@@ -10,7 +10,7 @@ import {
     AssignmentLog, RegistrationLog, PatientStatus,
     TriageCategory
 } from './types';
-import { LayoutDashboard, Grid, List, ClipboardList, CalendarClock, Settings, LogOut, Menu, Bell, Search, Map, Activity, User, Stethoscope, X, FileBarChart, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Grid, List, ClipboardList, CalendarClock, Settings, LogOut, Menu, Bell, Search, Map, Activity, User, Stethoscope, X, FileBarChart, ShieldCheck, Pill } from 'lucide-react';
 import { useAuth } from './src/context/AuthContext';
 import { useData } from './src/context/DataContext';
 
@@ -337,11 +337,11 @@ const App: React.FC = () => {
                             <LayoutDashboard size={18} /> Suvestinė
                         </button>
                     )}
-                    <button onClick={() => handleMenuClick('map')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/map' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                        <Grid size={18} /> Lovų Žemėlapis
-                    </button>
                     <button onClick={() => handleMenuClick('table')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/table' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                         <List size={18} /> Sąrašas
+                    </button>
+                    <button onClick={() => handleMenuClick('map')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/map' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                        <Grid size={18} /> Lovų Žemėlapis
                     </button>
                     <button onClick={() => handleMenuClick('tasks')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/tasks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                         <ClipboardList size={18} /> Užduotys
@@ -352,6 +352,11 @@ const App: React.FC = () => {
                     <button onClick={() => handleMenuClick('reports')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                         <FileBarChart size={18} /> Ataskaitos
                     </button>
+                    {currentUser.role === 'Admin' && (
+                        <button onClick={() => handleMenuClick('medications')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/medications' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                            <Pill size={18} /> Vaistai
+                        </button>
+                    )}
                     <div className="pt-4 mt-4 border-t border-slate-800">
                         {currentUser.role === 'Admin' && (
                             <button onClick={() => handleMenuClick('audit')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/audit' ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
@@ -514,6 +519,8 @@ const App: React.FC = () => {
                         updateDoctors={updateDoctors}
                         updateNurses={updateNurses}
                         setWorkShifts={setWorkShifts}
+                        medicationBank={medicationBank}
+                        setMedications={setMedications}
                     />
                 </div>
 

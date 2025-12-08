@@ -393,7 +393,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     ];
 
     return (
-        <div className="p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+        <div className="p-6 max-w-6xl mx-auto space-y-6 pb-20">
 
             {/* Header & Tabs */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -405,7 +405,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="flex flex-wrap gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
                     <button onClick={() => setActiveTab('general')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'general' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Bendrieji</button>
                     <button onClick={() => setActiveTab('staff')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'staff' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Personalas</button>
-                    <button onClick={() => setActiveTab('meds')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'meds' ? 'bg-yellow-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Vaistai</button>
                     {isAdmin && (
                         <>
                             <button onClick={() => setActiveTab('structure')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'structure' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Struktūra</button>
@@ -415,7 +414,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
             </div>
 
-            {!isAdmin && (activeTab === 'staff' || activeTab === 'meds' || activeTab === 'structure' || activeTab === 'protocols') && (
+            {!isAdmin && (activeTab === 'staff' || activeTab === 'structure' || activeTab === 'protocols') && (
                 <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center gap-3 text-red-200">
                     <Database size={20} className="text-red-500" />
                     <p>Šią sekciją redaguoti gali tik <strong>Administratorius</strong>.</p>
@@ -642,8 +641,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
             )}
 
+            {/* Medications tab removed - now in dedicated Medications module (Admin only) */}
+
             {/* --- TAB: MEDICATIONS --- */}
-            {activeTab === 'meds' && (
+            {false && activeTab === 'meds' && (
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
                     <div className="flex flex-col md:flex-row items-center justify-between mb-4 border-b border-slate-800 pb-2 gap-4">
                         <div className="flex items-center gap-2 text-slate-100 text-lg font-semibold shrink-0">

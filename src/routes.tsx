@@ -13,8 +13,9 @@ import {
     Bed, Staff, PatientLogEntry, UserProfile,
     AssignmentLog, RegistrationLog, PatientStatus,
     WorkShift, StaffSpecialization, StaffSkill,
-    ActivityLog
+    ActivityLog, MedicationItem
 } from '../types';
+import MedicationManagerView from '../pages/MedicationManagerView';
 
 interface AppRoutesProps {
     currentUser: UserProfile;
@@ -32,6 +33,8 @@ interface AppRoutesProps {
     bulletinMessage: string;
     settingsTab: string;
     filteredBeds: Bed[];
+    medicationBank: MedicationItem[];
+    setMedications: React.Dispatch<React.SetStateAction<MedicationItem[]>>;
     // Handlers
     onNavigate: (view: string, tab?: string) => void;
     onUpdateBulletin: (msg: string) => void;
@@ -74,10 +77,25 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
     onUpdateBed,
     updateDoctors,
     updateNurses,
-    setWorkShifts
+    setWorkShifts,
+    medicationBank,
+    setMedications
 }) => {
     return (
         <Routes>
+            <Route path="/medications" element={
+                currentUser.role === 'Admin' ? (
+                    <MedicationManagerView
+                        medicationBank={medicationBank}
+                        setMedications={setMedications}
+                        patientLogs={patientLog}
+                        doctors={doctors}
+                        beds={beds}
+                    />
+                ) : (
+                    <Navigate to="/dashboard" replace />
+                )
+            } />
             <Route path="/dashboard" element={
                 currentUser.role === 'Admin' ? (
                     <AdminDashboardView
@@ -103,6 +121,7 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
                     onUpdateUser={onUpdateUser}
                     patientLogs={patientLog}
                     specializations={specializations}
+                    skills={skills}
                 />
             } />
             <Route path="/map" element={

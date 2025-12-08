@@ -32,6 +32,10 @@ export interface MedicationItem {
   route: string; // IV, IM, PO, SC, INF
   category?: string; // NEW: Grouping (e.g. Antibiotics, Painkillers)
   isActive?: boolean; // NEW: Soft delete/Archived status
+  quantity: number; // NEW: Current stock
+  minQuantity?: number; // NEW: Low stock alert threshold
+  expirationDate?: string; // NEW: ISO date string for expiration tracking
+  batchNumber?: string; // NEW: For tracking specific batches
 }
 
 export interface MedicationOrder {
@@ -100,10 +104,10 @@ export interface StaffSkill {
 
 // NEW: User Preferences
 export interface UserPreferences {
-    defaultView?: 'dashboard' | 'map' | 'table' | 'tasks';
-    notificationsEnabled?: boolean;
-    soundEnabled?: boolean;
-    theme?: 'dark' | 'light'; // Reserved for future
+  defaultView?: 'dashboard' | 'map' | 'table' | 'tasks';
+  notificationsEnabled?: boolean;
+  soundEnabled?: boolean;
+  theme?: 'dark' | 'light'; // Reserved for future
 }
 
 export interface Staff {
@@ -117,6 +121,7 @@ export interface Staff {
   specializationId?: string; // NEW: Link to StaffSpecialization
   skillIds?: string[]; // NEW: Array of StaffSkill IDs
   phone?: string; // NEW: Short number
+  email?: string; // NEW: Email address
   preferences?: UserPreferences; // NEW: User preferences
 }
 
