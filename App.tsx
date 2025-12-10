@@ -352,11 +352,7 @@ const App: React.FC = () => {
                     <button onClick={() => handleMenuClick('reports')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                         <FileBarChart size={18} /> Ataskaitos
                     </button>
-                    {currentUser.role === 'Admin' && (
-                        <button onClick={() => handleMenuClick('medications')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/medications' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                            <Pill size={18} /> Vaistai
-                        </button>
-                    )}
+
                     <div className="pt-4 mt-4 border-t border-slate-800">
                         {currentUser.role === 'Admin' && (
                             <button onClick={() => handleMenuClick('audit')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/audit' ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>

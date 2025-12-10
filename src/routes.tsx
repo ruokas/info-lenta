@@ -15,7 +15,7 @@ import {
     WorkShift, StaffSpecialization, StaffSkill,
     ActivityLog, MedicationItem
 } from '../types';
-import MedicationManagerView from '../pages/MedicationManagerView';
+
 
 interface AppRoutesProps {
     currentUser: UserProfile;
@@ -83,19 +83,7 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
 }) => {
     return (
         <Routes>
-            <Route path="/medications" element={
-                currentUser.role === 'Admin' ? (
-                    <MedicationManagerView
-                        medicationBank={medicationBank}
-                        setMedications={setMedications}
-                        patientLogs={patientLog}
-                        doctors={doctors}
-                        beds={beds}
-                    />
-                ) : (
-                    <Navigate to="/dashboard" replace />
-                )
-            } />
+
             <Route path="/dashboard" element={
                 currentUser.role === 'Admin' ? (
                     <AdminDashboardView

@@ -46,7 +46,80 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     const [editStaffName, setEditStaffName] = useState('');
     const [editStaffSpec, setEditStaffSpec] = useState('');
     const [editStaffPhone, setEditStaffPhone] = useState('');
+
     const [editStaffSkills, setEditStaffSkills] = useState<string[]>([]);
+
+    // New Medication State
+    const [showMedModal, setShowMedModal] = useState(false);
+    const [medSearch, setMedSearch] = useState('');
+    const [medCategoryFilter, setMedCategoryFilter] = useState('ALL');
+    const [bulkMeds, setBulkMeds] = useState<{ name: string; dose: string; route: string; category: string; quantity: number; minQuantity: number }[]>([
+        { name: '', dose: '', route: 'IV', category: 'Kiti', quantity: 100, minQuantity: 10 }
+    ]);
+    const [editingMedId, setEditingMedId] = useState<string | null>(null);
+    const [editMedData, setEditMedData] = useState<Partial<MedicationItem>>({});
+
+    const handleAddBulkRow = () => {
+        setBulkMeds([...bulkMeds, { name: '', dose: '', route: 'IV', category: 'Kiti', quantity: 100, minQuantity: 10 }]);
+    };
+
+    const handleRemoveBulkRow = (index: number) => {
+        if (bulkMeds.length > 1) {
+            setBulkMeds(bulkMeds.filter((_, i) => i !== index));
+        }
+    };
+
+    const handleBulkChange = (index: number, field: string, value: any) => {
+        const newMeds = [...bulkMeds];
+        (newMeds[index] as any)[field] = value;
+        setBulkMeds(newMeds);
+    };
+
+    const saveBulkMeds = () => {
+        const validMeds = bulkMeds.filter(m => m.name.trim() !== '');
+        if (validMeds.length === 0) return;
+
+        const newItems: MedicationItem[] = validMeds.map(m => ({
+            id: `med-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            ...m,
+            isActive: true
+        }));
+
+        setMedications(prev => [...prev, ...newItems]);
+        setBulkMeds([{ name: '', dose: '', route: 'IV', category: 'Kiti', quantity: 100, minQuantity: 10 }]);
+        setShowMedModal(false);
+    };
+
+    const startEditingMed = (med: MedicationItem) => {
+        setEditingMedId(med.id);
+        setEditMedData({ ...med });
+    };
+
+    const saveEditMed = () => {
+        if (!editingMedId) return;
+        setMedications(prev => prev.map(m => m.id === editingMedId ? { ...m, ...editMedData } : m));
+        setEditingMedId(null);
+    };
+
+    const deleteMed = (id: string) => {
+        if (window.confirm('Ar tikrai norite ištrinti šį vaistą?')) {
+            setMedications(prev => prev.filter(m => m.id !== id));
+        }
+    };
+
+    // Existing Categories
+    const existingCategories = useMemo(() => {
+        const cats = new Set(medicationBank.map(m => m.category).filter(Boolean));
+        return ['ALL', ...Array.from(cats)];
+    }, [medicationBank]);
+
+    const filteredMeds = useMemo(() => {
+        return medicationBank.filter(m => {
+            const matchesSearch = m.name.toLowerCase().includes(medSearch.toLowerCase()) || m.category?.toLowerCase().includes(medSearch.toLowerCase());
+            const matchesCategory = medCategoryFilter === 'ALL' || m.category === medCategoryFilter;
+            return matchesSearch && matchesCategory;
+        });
+    }, [medicationBank, medSearch, medCategoryFilter]);
 
     const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
 
@@ -61,22 +134,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     const [deletingSpecId, setDeletingSpecId] = useState<string | null>(null);
     const [deletingSkillId, setDeletingSkillId] = useState<string | null>(null);
 
-    const [newMedName, setNewMedName] = useState('');
-    const [newMedDose, setNewMedDose] = useState('');
-    const [newMedRoute, setNewMedRoute] = useState('IV');
-    const [newMedCategory, setNewMedCategory] = useState('');
-    const [medSearch, setMedSearch] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('ALL');
-    const [showInactiveMeds, setShowInactiveMeds] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editMedName, setEditMedName] = useState('');
-    const [editMedDose, setEditMedDose] = useState('');
-    const [editMedRoute, setEditMedRoute] = useState('');
-    const [editMedCategory, setEditMedCategory] = useState('');
-    const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [editingCategoryName, setEditingCategoryName] = useState<string | null>(null);
-    const [tempCategoryName, setTempCategoryName] = useState('');
-    const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+
 
     const [selectedStructureSection, setSelectedStructureSection] = useState<string | null>(null);
     const [newSectionName, setNewSectionName] = useState('');
@@ -199,64 +257,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         setDeletingSkillId(null);
     };
 
-    const handleAddMedication = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newMedName.trim()) return;
-        const newMed: MedicationItem = {
-            id: `m-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: newMedName.trim(), dose: newMedDose.trim(), route: newMedRoute, category: newMedCategory.trim() || 'Kiti', isActive: true
-        };
-        setMedications([...medicationBank, newMed]);
-        setNewMedName(''); setNewMedDose(''); setNewMedCategory('');
-    };
-    const initDelete = (id: string) => { setEditingId(null); setDeletingId(id); };
-    const cancelDelete = () => { setDeletingId(null); };
-    const executeDelete = (id: string) => { setMedications(medicationBank.filter(m => m.id !== id)); setDeletingId(null); };
-    const toggleMedActive = (id: string) => {
-        setMedications(medicationBank.map(m => m.id === id ? { ...m, isActive: m.isActive === undefined ? false : !m.isActive } : m));
-    };
-    const startEditing = (item: any) => {
-        setDeletingId(null); setEditingId(item.id); setEditMedName(item.name); setEditMedDose(item.dose); setEditMedRoute(item.route); setEditMedCategory(item.category || '');
-    };
-    const saveEdit = (id: string) => {
-        if (!editMedName.trim()) return;
-        setMedications(medicationBank.map(m => m.id === id ? { ...m, name: editMedName.trim(), dose: editMedDose.trim(), route: editMedRoute, category: editMedCategory.trim() || 'Kiti' } : m));
-        setEditingId(null);
-    };
-    const startEditingCategory = (categoryName: string) => { setEditingCategoryName(categoryName); setTempCategoryName(categoryName); };
-    const saveCategoryRename = () => {
-        if (!editingCategoryName || !tempCategoryName.trim()) return;
-        const oldName = editingCategoryName; const newName = tempCategoryName.trim();
-        if (oldName === newName) { setEditingCategoryName(null); return; }
-        setMedications(medicationBank.map(med => med.category === oldName ? { ...med, category: newName } : med));
-        setEditingCategoryName(null); setTempCategoryName('');
-    };
-    const deleteCategory = (categoryName: string) => {
-        if (!window.confirm(`Ar tikrai norite panaikinti kategoriją "${categoryName}"?`)) return;
-        setMedications(medicationBank.map(med => med.category === categoryName ? { ...med, category: 'Kiti' } : med));
-    };
-    const toggleCategory = (category: string) => {
-        setExpandedCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
-    };
-    const existingCategories = useMemo(() => {
-        const cats = new Set<string>();
-        medicationBank.forEach(m => { if (m.category) cats.add(m.category); });
-        ['Antibiotikai', 'Nuskausminamieji', 'Kardiologiniai', 'Reanimaciniai', 'Virškinimo traktui', 'Neurologiniai'].forEach(c => cats.add(c));
-        return Array.from(cats).sort();
-    }, [medicationBank]);
-    const filteredMeds = useMemo(() => medicationBank.filter(m => {
-        const matchesSearch = m.name.toLowerCase().includes(medSearch.toLowerCase());
-        const matchesActive = showInactiveMeds ? true : (m.isActive !== false);
-        const matchesCategory = selectedCategory === 'ALL' || m.category === selectedCategory;
-        return matchesSearch && matchesActive && matchesCategory;
-    }), [medicationBank, medSearch, showInactiveMeds, selectedCategory]);
-    const groupedMeds = useMemo(() => {
-        const groups: Record<string, MedicationItem[]> = {};
-        filteredMeds.forEach(m => { const cat = m.category || 'Kiti'; if (!groups[cat]) groups[cat] = []; groups[cat].push(m); });
-        Object.keys(groups).forEach(key => { groups[key].sort((a, b) => a.name.localeCompare(b.name)); });
-        return groups;
-    }, [filteredMeds]);
-    const sortedCategories = Object.keys(groupedMeds).sort((a, b) => { if (a === 'Kiti') return 1; if (b === 'Kiti') return -1; return a.localeCompare(b); });
 
     const handleAddSection = () => {
         if (!newSectionName.trim() || sections.includes(newSectionName.trim())) return;
@@ -405,6 +405,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="flex flex-wrap gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
                     <button onClick={() => setActiveTab('general')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'general' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Bendrieji</button>
                     <button onClick={() => setActiveTab('staff')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'staff' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Personalas</button>
+                    <button onClick={() => setActiveTab('meds')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'meds' ? 'bg-yellow-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Vaistai</button>
                     {isAdmin && (
                         <>
                             <button onClick={() => setActiveTab('structure')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'structure' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>Struktūra</button>
@@ -644,386 +645,540 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             {/* Medications tab removed - now in dedicated Medications module (Admin only) */}
 
             {/* --- TAB: MEDICATIONS --- */}
-            {false && activeTab === 'meds' && (
+            {activeTab === 'meds' && (
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-                    <div className="flex flex-col md:flex-row items-center justify-between mb-4 border-b border-slate-800 pb-2 gap-4">
+                    <div className="flex flex-col md:flex-row items-center justify-between mb-4 border-b border-slate-800 pb-4 gap-4">
                         <div className="flex items-center gap-2 text-slate-100 text-lg font-semibold shrink-0">
                             <Pill className="text-yellow-500" size={20} />
                             <h3>Vaistų bankas</h3>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                            <div className="relative hidden md:block w-40">
-                                <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg pl-3 pr-8 py-1 text-xs outline-none focus:border-blue-500 appearance-none cursor-pointer">
-                                    <option value="ALL">Visos kategorijos</option>
-                                    {existingCategories.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
-                                </select>
-                                <Filter size={14} className="absolute right-2 top-1.5 text-slate-500 pointer-events-none" />
+                            <div className="relative flex-1 md:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                                <input
+                                    type="text"
+                                    placeholder="Ieškoti vaistų..."
+                                    value={medSearch}
+                                    onChange={(e) => setMedSearch(e.target.value)}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-sm outline-none focus:border-blue-500"
+                                />
                             </div>
-                            <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-200 shrink-0"><input type="checkbox" checked={showInactiveMeds} onChange={(e) => setShowInactiveMeds(e.target.checked)} className="rounded border-slate-700 bg-slate-800" /> Rodyti neaktyvius</label>
-                            <div className="relative flex-1 md:flex-none">
-                                <Search size={14} className="absolute left-2 top-1.5 text-slate-500" />
-                                <input type="text" placeholder="Ieškoti vaistų..." className="bg-slate-800 border border-slate-700 rounded-lg pl-7 pr-2 py-1 text-xs text-slate-200 w-full md:w-48 outline-none focus:border-blue-500" value={medSearch} onChange={(e) => setMedSearch(e.target.value)} />
-                            </div>
+                            <select
+                                value={medCategoryFilter}
+                                onChange={(e) => setMedCategoryFilter(e.target.value)}
+                                className="bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500"
+                            >
+                                <option value="ALL">Visos kategorijos</option>
+                                {existingCategories.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                            <button
+                                onClick={() => setShowMedModal(true)}
+                                className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition"
+                            >
+                                <Plus size={16} /> Pridėti Vaistus
+                            </button>
                         </div>
                     </div>
 
-                    {isAdmin && (
-                        <div className="flex flex-col md:flex-row gap-2 mb-4 bg-slate-950/50 p-3 rounded-lg border border-slate-800 items-end">
-                            <div className="flex-[2] w-full"><label className="block text-[10px] uppercase text-slate-500 font-semibold mb-1">Vaisto pavadinimas</label><input type="text" value={newMedName} onChange={(e) => setNewMedName(e.target.value)} placeholder="pvz. Paracetamolis" className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                            <div className="flex-1 w-full"><label className="block text-[10px] uppercase text-slate-500 font-semibold mb-1">Numatyta dozė</label><input type="text" value={newMedDose} onChange={(e) => setNewMedDose(e.target.value)} placeholder="pvz. 1000mg" className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                            <div className="w-full md:w-32"><label className="block text-[10px] uppercase text-slate-500 font-semibold mb-1">Kategorija</label><input type="text" list="category-suggestions" value={newMedCategory} onChange={(e) => setNewMedCategory(e.target.value)} placeholder="Kiti" className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" /><datalist id="category-suggestions">{existingCategories.map(cat => <option key={cat} value={cat} />)}</datalist></div>
-                            <div className="w-full md:w-24"><label className="block text-[10px] uppercase text-slate-500 font-semibold mb-1">Būdas</label><select value={newMedRoute} onChange={(e) => setNewMedRoute(e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-2 py-2 text-sm outline-none"><option value="IV">IV</option><option value="PO">PO</option><option value="IM">IM</option><option value="SC">SC</option><option value="Inhal">Inhal</option><option value="Nebul">Nebul</option><option value="Topical">Top</option><option value="PR">PR</option></select></div>
-                            <div><button type="button" onClick={(e) => handleAddMedication(e)} disabled={!newMedName.trim()} className="bg-yellow-600 hover:bg-yellow-700 text-white p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed mb-0.5 w-full md:w-auto flex justify-center"><CheckCircle size={20} /></button></div>
+                    {/* Medications Table */}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="text-slate-400 text-xs uppercase border-b border-slate-800">
+                                    <th className="p-3 font-medium">Pavadinimas</th>
+                                    <th className="p-3 font-medium">Dozė</th>
+                                    <th className="p-3 font-medium">Būdas</th>
+                                    <th className="p-3 font-medium">Kategorija</th>
+                                    <th className="p-3 font-medium text-center">Likutis</th>
+                                    <th className="p-3 font-medium text-right">Veiksmai</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {filteredMeds.map(med => (
+                                    <tr key={med.id} className="hover:bg-slate-800/50 transition group">
+                                        <td className="p-3 font-medium text-slate-200">
+                                            {editingMedId === med.id ? (
+                                                <input
+                                                    value={editMedData.name || ''}
+                                                    onChange={(e) => setEditMedData({ ...editMedData, name: e.target.value })}
+                                                    className="w-full bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none"
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                med.name
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-slate-400">
+                                            {editingMedId === med.id ? (
+                                                <input
+                                                    value={editMedData.dose || ''}
+                                                    onChange={(e) => setEditMedData({ ...editMedData, dose: e.target.value })}
+                                                    className="w-full bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none"
+                                                />
+                                            ) : (
+                                                med.dose
+                                            )}
+                                        </td>
+                                        <td className="p-3">
+                                            {editingMedId === med.id ? (
+                                                <select
+                                                    value={editMedData.route || ''}
+                                                    onChange={(e) => setEditMedData({ ...editMedData, route: e.target.value })}
+                                                    className="bg-slate-950 border border-blue-500 rounded px-2 py-1 text-xs outline-none"
+                                                >
+                                                    <option value="IV">IV</option><option value="PO">PO</option><option value="IM">IM</option><option value="SC">SC</option><option value="INF">INF</option>
+                                                </select>
+                                            ) : (
+                                                <span className="px-2 py-1 bg-slate-800 rounded text-xs font-mono text-slate-300">{med.route}</span>
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-slate-400">
+                                            {editingMedId === med.id ? (
+                                                <input
+                                                    value={editMedData.category || ''}
+                                                    onChange={(e) => setEditMedData({ ...editMedData, category: e.target.value })}
+                                                    className="w-full bg-slate-950 border border-blue-500 rounded px-2 py-1 text-xs outline-none"
+                                                />
+                                            ) : (
+                                                med.category
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            {editingMedId === med.id ? (
+                                                <input
+                                                    type="number"
+                                                    value={editMedData.quantity || 0}
+                                                    onChange={(e) => setEditMedData({ ...editMedData, quantity: parseInt(e.target.value) })}
+                                                    className="w-20 bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none text-center"
+                                                />
+                                            ) : (
+                                                <span className={`fount-bold ${med.quantity <= (med.minQuantity || 10) ? 'text-red-400' : 'text-emerald-400'}`}>{med.quantity}</span>
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-right">
+                                            {editingMedId === med.id ? (
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={saveEditMed} className="p-1.5 bg-green-600 hover:bg-green-700 text-white rounded"><Check size={16} /></button>
+                                                    <button onClick={() => setEditingMedId(null)} className="p-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded"><X size={16} /></button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
+                                                    <button onClick={() => startEditingMed(med)} className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded"><Edit2 size={16} /></button>
+                                                    <button onClick={() => deleteMed(med.id)} className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded"><Trash2 size={16} /></button>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredMeds.length === 0 && <div className="p-8 text-center text-slate-500">Nėra vaistų</div>}
+                    </div>
+
+                    {/* Bulk Add Modal */}
+                    {showMedModal && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold text-white flex items-center gap-2"><FolderInput size={24} className="text-green-500" /> Pridėti Vaistus</h3>
+                                    <button onClick={() => setShowMedModal(false)} className="text-slate-400 hover:text-white"><X size={24} /></button>
+                                </div>
+
+                                <div className="overflow-y-auto flex-1 mb-6 pr-2 custom-scrollbar">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="text-slate-500 text-xs uppercase border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
+                                                <th className="p-2 w-10">#</th>
+                                                <th className="p-2">Pavadinimas</th>
+                                                <th className="p-2 w-24">Dozė</th>
+                                                <th className="p-2 w-24">Būdas</th>
+                                                <th className="p-2 w-32">Kategorija</th>
+                                                <th className="p-2 w-24 text-center">Kiekis</th>
+                                                <th className="p-2 w-24 text-center">Min.</th>
+                                                <th className="p-2 w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {bulkMeds.map((med, index) => (
+                                                <tr key={index} className="border-b border-slate-800/50">
+                                                    <td className="p-2 text-slate-500 text-xs">{index + 1}</td>
+                                                    <td className="p-2">
+                                                        <input
+                                                            value={med.name}
+                                                            onChange={(e) => handleBulkChange(index, 'name', e.target.value)}
+                                                            placeholder="Vaisto pavadinimas"
+                                                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                                                            autoFocus={index === bulkMeds.length - 1 && index > 0}
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <input
+                                                            value={med.dose}
+                                                            onChange={(e) => handleBulkChange(index, 'dose', e.target.value)}
+                                                            placeholder="Dozė"
+                                                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <select
+                                                            value={med.route}
+                                                            onChange={(e) => handleBulkChange(index, 'route', e.target.value)}
+                                                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                                                        >
+                                                            <option value="IV">IV</option><option value="PO">PO</option><option value="IM">IM</option><option value="SC">SC</option><option value="INF">INF</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <input
+                                                            value={med.category}
+                                                            onChange={(e) => handleBulkChange(index, 'category', e.target.value)}
+                                                            placeholder="Kategorija"
+                                                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                                                            list="category-suggestions"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <input
+                                                            type="number"
+                                                            value={med.quantity}
+                                                            onChange={(e) => handleBulkChange(index, 'quantity', parseInt(e.target.value) || 0)}
+                                                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500 text-center"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        <input
+                                                            type="number"
+                                                            value={med.minQuantity}
+                                                            onChange={(e) => handleBulkChange(index, 'minQuantity', parseInt(e.target.value) || 0)}
+                                                            className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500 text-center"
+                                                        />
+                                                    </td>
+                                                    <td className="p-2">
+                                                        {bulkMeds.length > 1 && (
+                                                            <button onClick={() => handleRemoveBulkRow(index)} className="text-slate-500 hover:text-red-500 transition">
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+
+                                    <div className="mt-4 flex justify-center">
+                                        <button
+                                            onClick={handleAddBulkRow}
+                                            className="flex items-center gap-2 text-blue-400 hover:text-blue-300 font-medium transition px-4 py-2 hover:bg-slate-800 rounded-lg"
+                                        >
+                                            <Plus size={18} /> Pridėti dar vieną eilutę
+                                        </button>
+                                    </div>
+
+                                    <datalist id="category-suggestions">
+                                        {existingCategories.filter(c => c !== 'ALL').map(c => <option key={c} value={c} />)}
+                                    </datalist>
+                                </div>
+
+                                <div className="flex justify-end gap-4 border-t border-slate-800 pt-6">
+                                    <button
+                                        onClick={() => setShowMedModal(false)}
+                                        className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition font-medium"
+                                    >
+                                        Atšaukti
+                                    </button>
+                                    <button
+                                        onClick={saveBulkMeds}
+                                        disabled={bulkMeds.every(m => !m.name.trim())}
+                                        className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        <Save size={18} /> Išsaugoti Visus ({bulkMeds.filter(m => m.name.trim()).length})
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
+                </div>
+            )}
 
-                    <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-                        {sortedCategories.map(category => {
-                            const isExpanded = expandedCategories.includes(category) || medSearch.trim() !== '' || selectedCategory !== 'ALL';
-                            const isEditingCategory = editingCategoryName === category;
-                            return (
-                                <div key={category} className="border border-slate-800 rounded-lg overflow-hidden">
-                                    <div className="w-full flex items-center justify-between p-3 bg-slate-800/80 hover:bg-slate-800 transition">
-                                        {isEditingCategory ? (
-                                            <div className="flex-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                                <FolderInput size={18} className="text-blue-500" />
-                                                <input value={tempCategoryName} onChange={(e) => setTempCategoryName(e.target.value)} className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-sm outline-none text-white w-48" autoFocus placeholder="Naujas pavadinimas" />
-                                                <button onClick={saveCategoryRename} className="p-1 bg-green-600/20 text-green-500 rounded hover:bg-green-600 hover:text-white"><Check size={14} /></button>
-                                                <button onClick={() => setEditingCategoryName(null)} className="p-1 bg-red-600/20 text-red-500 rounded hover:bg-red-600 hover:text-white"><X size={14} /></button>
+
+            {/* --- TAB: STRUCTURE --- */}
+            {
+                isAdmin && activeTab === 'structure' && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm min-h-[500px] flex gap-6">
+                        {/* Sections Panel (Left) */}
+                        <div className="w-1/3 border-r border-slate-800 pr-6 flex flex-col">
+                            <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2"><LayoutTemplate size={20} className="text-purple-500" /> Zonos (Postai)</h3>
+
+                            <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+                                {sections.map(section => (
+                                    <div key={section} className={`p-3 rounded-lg border cursor-pointer transition flex justify-between items-center group ${selectedStructureSection === section ? 'bg-purple-900/20 border-purple-500/50 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'}`} onClick={() => setSelectedStructureSection(section)}>
+                                        {editingSectionName === section ? (
+                                            <div className="flex gap-1 w-full" onClick={e => e.stopPropagation()}>
+                                                <input value={tempSectionName} onChange={e => setTempSectionName(e.target.value)} className="w-full bg-slate-950 border border-blue-500 rounded px-1 text-xs outline-none text-white" autoFocus onKeyDown={e => e.key === 'Enter' && handleRenameSection()} />
+                                                <button onClick={handleRenameSection} className="text-green-500 hover:text-green-400"><Check size={14} /></button>
+                                                <button onClick={() => setEditingSectionName(null)} className="text-red-500 hover:text-red-400"><X size={14} /></button>
                                             </div>
                                         ) : (
-                                            <button onClick={() => toggleCategory(category)} className="flex-1 flex items-center gap-2 font-semibold text-slate-300 text-left">
-                                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />} <Layers size={16} className="text-slate-500" /> {category}
-                                                <span className="text-xs font-normal text-slate-500 ml-2 bg-slate-900 px-2 py-0.5 rounded-full">{groupedMeds[category].length}</span>
-                                            </button>
-                                        )}
-                                        {isAdmin && !isEditingCategory && category !== 'Kiti' && (
-                                            <div className="flex items-center gap-1 ml-2">
-                                                <button onClick={(e) => { e.stopPropagation(); startEditingCategory(category); }} className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700 rounded transition"><FolderInput size={14} /></button>
-                                                <button onClick={(e) => { e.stopPropagation(); deleteCategory(category); }} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded transition"><FolderMinus size={14} /></button>
-                                            </div>
+                                            <>
+                                                <span className="font-medium truncate">{section}</span>
+                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditingSectionName(section); setTempSectionName(section); }} className="p-1 hover:text-blue-400"><Edit2 size={12} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteSection(section); }} className="p-1 hover:text-red-400"><Trash2 size={12} /></button>
+                                                </div>
+                                            </>
                                         )}
                                     </div>
-                                    {isExpanded && (
-                                        <div className="bg-slate-900/50 p-2 space-y-1">
-                                            {groupedMeds[category].map(med => (
-                                                <div key={med.id} className={`flex justify-between items-center p-2 rounded-lg border transition group ${deletingId === med.id ? 'border-red-500/50 bg-red-900/10' : med.isActive === false ? 'border-slate-800 bg-slate-900/30 opacity-60' : 'border-slate-700/50 bg-slate-800/50 hover:bg-slate-800'}`}>
-                                                    {editingId === med.id ? (
-                                                        <div className="flex-1 flex gap-2 flex-wrap">
-                                                            <input value={editMedName} onChange={(e) => setEditMedName(e.target.value)} className="flex-[2] min-w-[120px] bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none" placeholder="Pavadinimas" />
-                                                            <input value={editMedDose} onChange={(e) => setEditMedDose(e.target.value)} className="flex-1 min-w-[80px] bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none" placeholder="Dozė" />
-                                                            <input value={editMedCategory} onChange={(e) => setEditMedCategory(e.target.value)} list="category-suggestions" className="flex-1 min-w-[100px] bg-slate-950 border border-blue-500 rounded px-2 py-1 text-sm outline-none" placeholder="Kategorija" />
-                                                            <select value={editMedRoute} onChange={(e) => setEditMedRoute(e.target.value)} className="w-20 bg-slate-950 border border-blue-500 rounded px-1 py-1 text-sm outline-none"><option value="IV">IV</option><option value="PO">PO</option><option value="IM">IM</option><option value="SC">SC</option><option value="Inhal">Inhal</option><option value="Nebul">Nebul</option><option value="Topical">Top</option><option value="PR">PR</option></select>
-                                                            <button type="button" onClick={() => saveEdit(med.id)} className="text-green-500 p-1 hover:bg-slate-700 rounded"><Check size={16} /></button>
-                                                            <button type="button" onClick={() => setEditingId(null)} className="text-red-500 p-1 hover:bg-slate-700 rounded"><X size={16} /></button>
-                                                        </div>
-                                                    ) : deletingId === med.id ? (
-                                                        <div className="flex-1 flex items-center justify-between animate-in fade-in zoom-in-95 duration-200">
-                                                            <span className="text-red-200 font-medium text-sm flex items-center gap-2"><AlertTriangle size={14} /> Ištrinti?</span>
-                                                            <div className="flex gap-2">
-                                                                <button type="button" onClick={() => executeDelete(med.id)} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow-lg shadow-red-900/20">TAIP</button>
-                                                                <button type="button" onClick={cancelDelete} className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded">NE</button>
+                                ))}
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-slate-800">
+                                <div className="flex gap-2">
+                                    <input value={newSectionName} onChange={e => setNewSectionName(e.target.value)} placeholder="Naujas postas" className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-purple-500 text-slate-200" />
+                                    <button onClick={handleAddSection} disabled={!newSectionName.trim()} className="bg-purple-600 hover:bg-purple-700 text-white p-2 rounded transition disabled:opacity-50"><Plus size={16} /></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Beds Panel (Right) */}
+                        <div className="flex-1 flex flex-col">
+                            <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2"><Square size={20} className="text-blue-500" /> Lovos: {selectedStructureSection || 'Pasirinkite zoną'}</h3>
+
+                            {selectedStructureSection ? (
+                                <>
+                                    <div className="flex-1 bg-slate-950/30 rounded-xl border border-slate-800 p-4 overflow-y-auto custom-scrollbar">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            {selectedSectionBeds.map(bed => (
+                                                <div key={bed.id} className="bg-slate-800 border border-slate-700 rounded-lg p-3 flex flex-col justify-between items-center group relative hover:border-slate-500 transition">
+                                                    {editingBedId === bed.id ? (
+                                                        <div className="flex flex-col gap-2 w-full">
+                                                            <input value={editBedLabel} onChange={e => setEditBedLabel(e.target.value)} className="bg-slate-950 border border-blue-500 rounded px-1 py-0.5 text-center text-sm outline-none text-white w-full" autoFocus onKeyDown={e => e.key === 'Enter' && handleRenameBed(bed.id)} />
+                                                            <div className="flex justify-center gap-2">
+                                                                <button onClick={() => handleRenameBed(bed.id)} className="text-green-500 bg-green-900/20 p-1 rounded"><Check size={12} /></button>
+                                                                <button onClick={() => setEditingBedId(null)} className="text-red-500 bg-red-900/20 p-1 rounded"><X size={12} /></button>
                                                             </div>
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <div className="flex flex-col">
-                                                                <span className={`text-sm font-medium flex items-center gap-2 ${med.isActive === false ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{med.name} {med.isActive === false && <span className="text-[10px] no-underline bg-slate-800 px-1 rounded border border-slate-700">Neaktyvus</span>}</span>
-                                                                <span className="text-slate-500 text-xs">{med.dose} {med.route}</span>
+                                                            <span className="text-lg font-bold text-slate-200">{bed.label}</span>
+                                                            <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition bg-slate-800/80 p-1 rounded">
+                                                                <button onClick={() => { setEditingBedId(bed.id); setEditBedLabel(bed.label); }} className="text-slate-400 hover:text-blue-400"><Edit2 size={12} /></button>
+                                                                <button onClick={() => handleDeleteBed(bed.id)} className="text-slate-400 hover:text-red-400"><Trash2 size={12} /></button>
                                                             </div>
-                                                            {isAdmin && (
-                                                                <div className="flex gap-1">
-                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); toggleMedActive(med.id); }} className={`transition p-1.5 rounded ${med.isActive === false ? 'text-slate-500 hover:text-green-400 bg-slate-900/50 hover:bg-green-900/20' : 'text-green-500 hover:text-slate-400 bg-green-900/10 hover:bg-slate-900/50'}`}>{med.isActive === false ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); startEditing(med); }} className="text-slate-400 hover:text-blue-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"><Edit2 size={14} /></button>
-                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); initDelete(med.id); }} className="text-slate-500 hover:text-red-400 transition bg-slate-900/50 p-1.5 rounded hover:bg-slate-700"><Trash2 size={14} /></button>
-                                                                </div>
-                                                            )}
+                                                            <div className={`mt-2 w-2 h-2 rounded-full ${bed.status === 'Laisva' ? 'bg-slate-600' : 'bg-green-500'}`} title={bed.status}></div>
                                                         </>
                                                     )}
                                                 </div>
                                             ))}
                                         </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                        {filteredMeds.length === 0 && <p className="text-slate-500 italic text-sm text-center py-2">Nerasta vaistų.</p>}
-                    </div>
-                </div>
-            )}
-
-            {/* --- TAB: STRUCTURE --- */}
-            {isAdmin && activeTab === 'structure' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm min-h-[500px] flex gap-6">
-                    {/* Sections Panel (Left) */}
-                    <div className="w-1/3 border-r border-slate-800 pr-6 flex flex-col">
-                        <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2"><LayoutTemplate size={20} className="text-purple-500" /> Zonos (Postai)</h3>
-
-                        <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-                            {sections.map(section => (
-                                <div key={section} className={`p-3 rounded-lg border cursor-pointer transition flex justify-between items-center group ${selectedStructureSection === section ? 'bg-purple-900/20 border-purple-500/50 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'}`} onClick={() => setSelectedStructureSection(section)}>
-                                    {editingSectionName === section ? (
-                                        <div className="flex gap-1 w-full" onClick={e => e.stopPropagation()}>
-                                            <input value={tempSectionName} onChange={e => setTempSectionName(e.target.value)} className="w-full bg-slate-950 border border-blue-500 rounded px-1 text-xs outline-none text-white" autoFocus onKeyDown={e => e.key === 'Enter' && handleRenameSection()} />
-                                            <button onClick={handleRenameSection} className="text-green-500 hover:text-green-400"><Check size={14} /></button>
-                                            <button onClick={() => setEditingSectionName(null)} className="text-red-500 hover:text-red-400"><X size={14} /></button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <span className="font-medium truncate">{section}</span>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                                                <button onClick={(e) => { e.stopPropagation(); setEditingSectionName(section); setTempSectionName(section); }} className="p-1 hover:text-blue-400"><Edit2 size={12} /></button>
-                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteSection(section); }} className="p-1 hover:text-red-400"><Trash2 size={12} /></button>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-slate-800">
-                            <div className="flex gap-2">
-                                <input value={newSectionName} onChange={e => setNewSectionName(e.target.value)} placeholder="Naujas postas" className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-purple-500 text-slate-200" />
-                                <button onClick={handleAddSection} disabled={!newSectionName.trim()} className="bg-purple-600 hover:bg-purple-700 text-white p-2 rounded transition disabled:opacity-50"><Plus size={16} /></button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Beds Panel (Right) */}
-                    <div className="flex-1 flex flex-col">
-                        <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2"><Square size={20} className="text-blue-500" /> Lovos: {selectedStructureSection || 'Pasirinkite zoną'}</h3>
-
-                        {selectedStructureSection ? (
-                            <>
-                                <div className="flex-1 bg-slate-950/30 rounded-xl border border-slate-800 p-4 overflow-y-auto custom-scrollbar">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        {selectedSectionBeds.map(bed => (
-                                            <div key={bed.id} className="bg-slate-800 border border-slate-700 rounded-lg p-3 flex flex-col justify-between items-center group relative hover:border-slate-500 transition">
-                                                {editingBedId === bed.id ? (
-                                                    <div className="flex flex-col gap-2 w-full">
-                                                        <input value={editBedLabel} onChange={e => setEditBedLabel(e.target.value)} className="bg-slate-950 border border-blue-500 rounded px-1 py-0.5 text-center text-sm outline-none text-white w-full" autoFocus onKeyDown={e => e.key === 'Enter' && handleRenameBed(bed.id)} />
-                                                        <div className="flex justify-center gap-2">
-                                                            <button onClick={() => handleRenameBed(bed.id)} className="text-green-500 bg-green-900/20 p-1 rounded"><Check size={12} /></button>
-                                                            <button onClick={() => setEditingBedId(null)} className="text-red-500 bg-red-900/20 p-1 rounded"><X size={12} /></button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <span className="text-lg font-bold text-slate-200">{bed.label}</span>
-                                                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition bg-slate-800/80 p-1 rounded">
-                                                            <button onClick={() => { setEditingBedId(bed.id); setEditBedLabel(bed.label); }} className="text-slate-400 hover:text-blue-400"><Edit2 size={12} /></button>
-                                                            <button onClick={() => handleDeleteBed(bed.id)} className="text-slate-400 hover:text-red-400"><Trash2 size={12} /></button>
-                                                        </div>
-                                                        <div className={`mt-2 w-2 h-2 rounded-full ${bed.status === 'Laisva' ? 'bg-slate-600' : 'bg-green-500'}`} title={bed.status}></div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        ))}
                                     </div>
+                                    <div className="mt-4 pt-4 border-t border-slate-800 flex gap-2">
+                                        <input value={newBedLabel} onChange={e => setNewBedLabel(e.target.value)} placeholder="Naujos lovos Nr." className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500 text-slate-200" />
+                                        <button onClick={handleAddBed} disabled={!newBedLabel.trim()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium transition disabled:opacity-50 flex items-center gap-2"><Plus size={16} /> Pridėti Lovą</button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl">
+                                    Pasirinkite zoną kairėje, kad matytumėte lovas.
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-slate-800 flex gap-2">
-                                    <input value={newBedLabel} onChange={e => setNewBedLabel(e.target.value)} placeholder="Naujos lovos Nr." className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm outline-none focus:border-blue-500 text-slate-200" />
-                                    <button onClick={handleAddBed} disabled={!newBedLabel.trim()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium transition disabled:opacity-50 flex items-center gap-2"><Plus size={16} /> Pridėti Lovą</button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex-1 flex items-center justify-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl">
-                                Pasirinkite zoną kairėje, kad matytumėte lovas.
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* --- TAB: PROTOCOLS --- */}
-            {isAdmin && activeTab === 'protocols' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm min-h-[500px] flex flex-col">
-                    <h3 className="text-lg font-semibold text-slate-100 mb-6 flex items-center gap-2 border-b border-slate-800 pb-4"><BookOpen size={20} className="text-emerald-500" /> Gydymo Protokolai</h3>
+            {
+                isAdmin && activeTab === 'protocols' && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm min-h-[500px] flex flex-col">
+                        <h3 className="text-lg font-semibold text-slate-100 mb-6 flex items-center gap-2 border-b border-slate-800 pb-4"><BookOpen size={20} className="text-emerald-500" /> Gydymo Protokolai</h3>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Protocol List */}
-                        <div className="space-y-4">
-                            {protocols.map(proto => (
-                                <div key={proto.id} className="bg-slate-950/50 border border-slate-800 rounded-xl overflow-hidden">
-                                    <div className="p-3 bg-slate-800 flex justify-between items-center">
-                                        {deletingProtocolId === proto.id ? (
-                                            <div className="flex-1 flex items-center justify-between animate-in fade-in">
-                                                <span className="text-red-400 font-bold text-sm">Ištrinti protokolą?</span>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => executeDeleteProtocol(proto.id)} className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold">TAIP</button>
-                                                    <button onClick={() => setDeletingProtocolId(null)} className="px-3 py-1 bg-slate-700 text-white rounded text-xs">NE</button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <h4 className="font-bold text-slate-200">{proto.name}</h4>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => setEditingProtocolId(editingProtocolId === proto.id ? null : proto.id)} className={`p-1.5 rounded transition ${editingProtocolId === proto.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><Edit2 size={16} /></button>
-                                                    <button onClick={() => initDeleteProtocol(proto.id)} className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded transition"><Trash2 size={16} /></button>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                    <div className="p-3 space-y-2">
-                                        {/* Meds List */}
-                                        {proto.meds.map((med, idx) => (
-                                            <div key={idx} className="flex justify-between items-center text-sm bg-slate-900/50 p-2 rounded border border-slate-800/50">
-                                                <div className="flex items-center gap-2">
-                                                    <Pill size={14} className="text-blue-400" />
-                                                    <span className="text-slate-300">{med.name}</span>
-                                                    <span className="text-slate-500 text-xs">{med.dose} {med.route}</span>
-                                                </div>
-                                                {editingProtocolId === proto.id && <button onClick={() => removeItemFromProtocol(proto.id, 'MED', idx)} className="text-slate-600 hover:text-red-400"><X size={14} /></button>}
-                                            </div>
-                                        ))}
-                                        {/* Actions List */}
-                                        {proto.actions.map((act, idx) => (
-                                            <div key={idx} className="flex justify-between items-center text-sm bg-slate-900/50 p-2 rounded border border-slate-800/50">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-yellow-500">{getActionIcon(act.type)}</div>
-                                                    <span className="text-slate-300">{act.name}</span>
-                                                    <span className="text-slate-500 text-[10px] uppercase">{act.type}</span>
-                                                </div>
-                                                {editingProtocolId === proto.id && <button onClick={() => removeItemFromProtocol(proto.id, 'ACTION', idx)} className="text-slate-600 hover:text-red-400"><X size={14} /></button>}
-                                            </div>
-                                        ))}
-                                        {proto.meds.length === 0 && proto.actions.length === 0 && <p className="text-xs text-slate-500 italic">Tuščias protokolas</p>}
-                                    </div>
-
-                                    {/* Editor Panel inside Card */}
-                                    {editingProtocolId === proto.id && (
-                                        <div className="p-3 bg-slate-900 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                                            <div className="flex gap-2 mb-2">
-                                                <button onClick={() => setNewItemType('MED')} className={`flex-1 py-1 text-xs font-bold rounded ${newItemType === 'MED' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>+ Vaistas</button>
-                                                <button onClick={() => setNewItemType('ACTION')} className={`flex-1 py-1 text-xs font-bold rounded ${newItemType === 'ACTION' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'}`}>+ Veiksmas</button>
-                                            </div>
-
-                                            {newItemType === 'MED' ? (
-                                                <div className="flex flex-col gap-2">
-                                                    <input value={newProtoMedName} onChange={e => setNewProtoMedName(e.target.value)} placeholder="Vaistas" className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none" />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Protocol List */}
+                            <div className="space-y-4">
+                                {protocols.map(proto => (
+                                    <div key={proto.id} className="bg-slate-950/50 border border-slate-800 rounded-xl overflow-hidden">
+                                        <div className="p-3 bg-slate-800 flex justify-between items-center">
+                                            {deletingProtocolId === proto.id ? (
+                                                <div className="flex-1 flex items-center justify-between animate-in fade-in">
+                                                    <span className="text-red-400 font-bold text-sm">Ištrinti protokolą?</span>
                                                     <div className="flex gap-2">
-                                                        <input value={newProtoMedDose} onChange={e => setNewProtoMedDose(e.target.value)} placeholder="Dozė" className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none" />
-                                                        <select value={newProtoMedRoute} onChange={e => setNewProtoMedRoute(e.target.value)} className="w-20 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-sm text-white outline-none">
-                                                            <option value="IV">IV</option><option value="PO">PO</option><option value="IM">IM</option>
-                                                        </select>
-                                                        <button onClick={() => handleAddItemToProtocol(proto.id)} className="bg-blue-600 text-white px-3 rounded"><Plus size={16} /></button>
+                                                        <button onClick={() => executeDeleteProtocol(proto.id)} className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold">TAIP</button>
+                                                        <button onClick={() => setDeletingProtocolId(null)} className="px-3 py-1 bg-slate-700 text-white rounded text-xs">NE</button>
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="flex gap-2">
-                                                    <select value={newProtoActionType} onChange={e => setNewProtoActionType(e.target.value as ActionType)} className="w-24 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-sm text-white outline-none">
-                                                        <option value="LABS">Tyrimai</option><option value="XRAY">Rentgenas</option><option value="CT">KT</option><option value="EKG">EKG</option>
-                                                    </select>
-                                                    <input value={newProtoActionName} onChange={e => setNewProtoActionName(e.target.value)} placeholder="Pavadinimas" className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none" />
-                                                    <button onClick={() => handleAddItemToProtocol(proto.id)} className="bg-yellow-600 text-white px-3 rounded"><Plus size={16} /></button>
-                                                </div>
+                                                <>
+                                                    <h4 className="font-bold text-slate-200">{proto.name}</h4>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => setEditingProtocolId(editingProtocolId === proto.id ? null : proto.id)} className={`p-1.5 rounded transition ${editingProtocolId === proto.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}><Edit2 size={16} /></button>
+                                                        <button onClick={() => initDeleteProtocol(proto.id)} className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded transition"><Trash2 size={16} /></button>
+                                                    </div>
+                                                </>
                                             )}
                                         </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                                        <div className="p-3 space-y-2">
+                                            {/* Meds List */}
+                                            {proto.meds.map((med, idx) => (
+                                                <div key={idx} className="flex justify-between items-center text-sm bg-slate-900/50 p-2 rounded border border-slate-800/50">
+                                                    <div className="flex items-center gap-2">
+                                                        <Pill size={14} className="text-blue-400" />
+                                                        <span className="text-slate-300">{med.name}</span>
+                                                        <span className="text-slate-500 text-xs">{med.dose} {med.route}</span>
+                                                    </div>
+                                                    {editingProtocolId === proto.id && <button onClick={() => removeItemFromProtocol(proto.id, 'MED', idx)} className="text-slate-600 hover:text-red-400"><X size={14} /></button>}
+                                                </div>
+                                            ))}
+                                            {/* Actions List */}
+                                            {proto.actions.map((act, idx) => (
+                                                <div key={idx} className="flex justify-between items-center text-sm bg-slate-900/50 p-2 rounded border border-slate-800/50">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-yellow-500">{getActionIcon(act.type)}</div>
+                                                        <span className="text-slate-300">{act.name}</span>
+                                                        <span className="text-slate-500 text-[10px] uppercase">{act.type}</span>
+                                                    </div>
+                                                    {editingProtocolId === proto.id && <button onClick={() => removeItemFromProtocol(proto.id, 'ACTION', idx)} className="text-slate-600 hover:text-red-400"><X size={14} /></button>}
+                                                </div>
+                                            ))}
+                                            {proto.meds.length === 0 && proto.actions.length === 0 && <p className="text-xs text-slate-500 italic">Tuščias protokolas</p>}
+                                        </div>
 
-                        {/* Create New Protocol */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 h-fit sticky top-6">
-                            <h4 className="font-bold text-slate-300 mb-4">Sukurti naują protokolą</h4>
-                            <div className="flex gap-2 mb-4">
-                                <input value={newProtocolName} onChange={e => setNewProtocolName(e.target.value)} placeholder="Protokolo pavadinimas (pvz. Insultas)" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" />
+                                        {/* Editor Panel inside Card */}
+                                        {editingProtocolId === proto.id && (
+                                            <div className="p-3 bg-slate-900 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                                                <div className="flex gap-2 mb-2">
+                                                    <button onClick={() => setNewItemType('MED')} className={`flex-1 py-1 text-xs font-bold rounded ${newItemType === 'MED' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>+ Vaistas</button>
+                                                    <button onClick={() => setNewItemType('ACTION')} className={`flex-1 py-1 text-xs font-bold rounded ${newItemType === 'ACTION' ? 'bg-yellow-600 text-white' : 'bg-slate-800 text-slate-400'}`}>+ Veiksmas</button>
+                                                </div>
+
+                                                {newItemType === 'MED' ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        <input value={newProtoMedName} onChange={e => setNewProtoMedName(e.target.value)} placeholder="Vaistas" className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none" />
+                                                        <div className="flex gap-2">
+                                                            <input value={newProtoMedDose} onChange={e => setNewProtoMedDose(e.target.value)} placeholder="Dozė" className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none" />
+                                                            <select value={newProtoMedRoute} onChange={e => setNewProtoMedRoute(e.target.value)} className="w-20 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-sm text-white outline-none">
+                                                                <option value="IV">IV</option><option value="PO">PO</option><option value="IM">IM</option>
+                                                            </select>
+                                                            <button onClick={() => handleAddItemToProtocol(proto.id)} className="bg-blue-600 text-white px-3 rounded"><Plus size={16} /></button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex gap-2">
+                                                        <select value={newProtoActionType} onChange={e => setNewProtoActionType(e.target.value as ActionType)} className="w-24 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-sm text-white outline-none">
+                                                            <option value="LABS">Tyrimai</option><option value="XRAY">Rentgenas</option><option value="CT">KT</option><option value="EKG">EKG</option>
+                                                        </select>
+                                                        <input value={newProtoActionName} onChange={e => setNewProtoActionName(e.target.value)} placeholder="Pavadinimas" className="flex-1 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-white outline-none" />
+                                                        <button onClick={() => handleAddItemToProtocol(proto.id)} className="bg-yellow-600 text-white px-3 rounded"><Plus size={16} /></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
-                            <button onClick={handleAddProtocol} disabled={!newProtocolName.trim()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-bold transition disabled:opacity-50">Sukurti</button>
+
+                            {/* Create New Protocol */}
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 h-fit sticky top-6">
+                                <h4 className="font-bold text-slate-300 mb-4">Sukurti naują protokolą</h4>
+                                <div className="flex gap-2 mb-4">
+                                    <input value={newProtocolName} onChange={e => setNewProtocolName(e.target.value)} placeholder="Protokolo pavadinimas (pvz. Insultas)" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" />
+                                </div>
+                                <button onClick={handleAddProtocol} disabled={!newProtocolName.trim()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-bold transition disabled:opacity-50">Sukurti</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* --- TAB: GENERAL SETTINGS --- */}
-            {activeTab === 'general' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
-                    <h3 className="text-lg font-semibold text-slate-100 mb-4 border-b border-slate-800 pb-2">Bendrieji nustatymai</h3>
+            {
+                activeTab === 'general' && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+                        <h3 className="text-lg font-semibold text-slate-100 mb-4 border-b border-slate-800 pb-2">Bendrieji nustatymai</h3>
 
-                    <div className="space-y-6">
+                        <div className="space-y-6">
 
-                        {isAdmin && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-950/30 p-4 rounded-xl border border-slate-800/50 mb-6">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2"><Clock size={14} /> Pacientų buvimo laiko limitas (Alert)</label>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="number"
-                                            value={appSettings.overdueMinutes}
-                                            onChange={e => setAppSettings({ ...appSettings, overdueMinutes: parseInt(e.target.value) || 240 })}
-                                            className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-24 text-center font-bold outline-none focus:border-blue-500"
-                                        />
-                                        <span className="text-slate-400 text-sm">minučių ({Math.floor(appSettings.overdueMinutes / 60)} val.)</span>
+                            {isAdmin && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-950/30 p-4 rounded-xl border border-slate-800/50 mb-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2"><Clock size={14} /> Pacientų buvimo laiko limitas (Alert)</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                value={appSettings.overdueMinutes}
+                                                onChange={e => setAppSettings({ ...appSettings, overdueMinutes: parseInt(e.target.value) || 240 })}
+                                                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white w-24 text-center font-bold outline-none focus:border-blue-500"
+                                            />
+                                            <span className="text-slate-400 text-sm">minučių ({Math.floor(appSettings.overdueMinutes / 60)} val.)</span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 mt-1">Po šio laiko kortelė pradės mirksėti raudonai.</p>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 mt-1">Po šio laiko kortelė pradės mirksėti raudonai.</p>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-slate-800 p-2 rounded text-blue-400">
-                                    <RefreshCw size={20} className={autoRefresh ? "animate-spin" : ""} />
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-slate-800 p-2 rounded text-blue-400">
+                                        <RefreshCw size={20} className={autoRefresh ? "animate-spin" : ""} />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-slate-200">Automatinis atnaujinimas</p>
+                                        <p className="text-xs text-slate-500">Atnaujinti ekrano duomenis kas 60 sekundžių (nereikalinga jei Supabase aktyvuota)</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="font-medium text-slate-200">Automatinis atnaujinimas</p>
-                                    <p className="text-xs text-slate-500">Atnaujinti ekrano duomenis kas 60 sekundžių (nereikalinga jei Supabase aktyvuota)</p>
-                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={autoRefresh}
+                                        onChange={(e) => setAutoRefresh(e.target.checked)}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
                             </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={autoRefresh}
-                                    onChange={(e) => setAutoRefresh(e.target.checked)}
-                                    className="sr-only peer"
-                                />
-                                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
+
+                            {isAdmin && (
+                                <>
+                                    <div className="pt-4 border-t border-slate-800">
+                                        <div className="bg-slate-900 border border-blue-900/30 rounded-xl p-6 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-4 opacity-10"><Database size={100} className="text-blue-500" /></div>
+                                            <div className="flex items-center gap-2 mb-4 text-slate-100 text-lg font-semibold border-b border-slate-800 pb-2 relative z-10">
+                                                <Database className="text-blue-500" size={20} />
+                                                <h3>Duomenų sinchronizacija (Supabase)</h3>
+                                                {isSyncConfigured && <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded ml-2 flex items-center gap-1"><CheckCircle size={10} /> Aktyvuota</span>}
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                                                <div><label className="block text-xs font-medium text-slate-500 uppercase mb-1">Project URL</label><input type="text" value={sbUrl} onChange={(e) => setSbUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none font-mono" /></div>
+                                                <div><label className="block text-xs font-medium text-slate-500 uppercase mb-1">Anon / Public Key</label><input type="password" value={sbKey} onChange={(e) => setSbKey(e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none font-mono" /></div>
+                                            </div>
+                                            <div className="mt-4 flex gap-3 relative z-10">
+                                                <button type="button" onClick={handleSaveSupabase} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition text-sm shadow-lg shadow-blue-900/20"><Save size={16} /> Išsaugoti ir prisijungti</button>
+                                                {isSyncConfigured && <button type="button" onClick={clearSupabaseConfig} className="px-4 py-2 text-red-400 hover:bg-slate-800 rounded-lg font-medium transition text-sm">Atsijungti</button>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-800 flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (window.confirm('DĖMESIO: Ar tikrai norite atstatyti visus nustatymus ir pacientų duomenis į pradinius? Visi pakeitimai bus prarasti.')) {
+                                                    onResetData();
+                                                }
+                                            }}
+                                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-red-900/20 text-red-400 border border-red-900/30 hover:border-red-900/70 rounded-lg transition"
+                                        >
+                                            <RotateCcw size={18} />
+                                            Atstatyti pradinius duomenis (Reset)
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
-
-                        {isAdmin && (
-                            <>
-                                <div className="pt-4 border-t border-slate-800">
-                                    <div className="bg-slate-900 border border-blue-900/30 rounded-xl p-6 shadow-sm relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10"><Database size={100} className="text-blue-500" /></div>
-                                        <div className="flex items-center gap-2 mb-4 text-slate-100 text-lg font-semibold border-b border-slate-800 pb-2 relative z-10">
-                                            <Database className="text-blue-500" size={20} />
-                                            <h3>Duomenų sinchronizacija (Supabase)</h3>
-                                            {isSyncConfigured && <span className="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded ml-2 flex items-center gap-1"><CheckCircle size={10} /> Aktyvuota</span>}
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                                            <div><label className="block text-xs font-medium text-slate-500 uppercase mb-1">Project URL</label><input type="text" value={sbUrl} onChange={(e) => setSbUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none font-mono" /></div>
-                                            <div><label className="block text-xs font-medium text-slate-500 uppercase mb-1">Anon / Public Key</label><input type="password" value={sbKey} onChange={(e) => setSbKey(e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-sm outline-none font-mono" /></div>
-                                        </div>
-                                        <div className="mt-4 flex gap-3 relative z-10">
-                                            <button type="button" onClick={handleSaveSupabase} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition text-sm shadow-lg shadow-blue-900/20"><Save size={16} /> Išsaugoti ir prisijungti</button>
-                                            {isSyncConfigured && <button type="button" onClick={clearSupabaseConfig} className="px-4 py-2 text-red-400 hover:bg-slate-800 rounded-lg font-medium transition text-sm">Atsijungti</button>}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-slate-800 flex justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (window.confirm('DĖMESIO: Ar tikrai norite atstatyti visus nustatymus ir pacientų duomenis į pradinius? Visi pakeitimai bus prarasti.')) {
-                                                onResetData();
-                                            }
-                                        }}
-                                        className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-red-900/20 text-red-400 border border-red-900/30 hover:border-red-900/70 rounded-lg transition"
-                                    >
-                                        <RotateCcw size={18} />
-                                        Atstatyti pradinius duomenis (Reset)
-                                    </button>
-                                </div>
-                            </>
-                        )}
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 
