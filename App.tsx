@@ -545,6 +545,7 @@ const App: React.FC = () => {
                         onSave={handleBedUpdate}
                         workShifts={workShifts}
                         protocols={protocols}
+                        onMovePatient={handleMovePatient}
                     />
                 )}
 

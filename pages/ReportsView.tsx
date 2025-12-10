@@ -1,15 +1,15 @@
-
 import React, { useState, useMemo } from 'react';
-import { RegistrationLog, Staff, PatientLogEntry } from '../types';
-import { FileBarChart, Calendar, Download, Printer, Filter, Moon, Sun, Clock, FileText, Activity, Users, ArrowRight } from 'lucide-react';
+import { Bed, RegistrationLog, Staff, PatientLogEntry } from '../types';
+import { FileBarChart, Calendar, Download, Printer, Filter, Moon, Sun, Clock, FileText, Activity, Users, ArrowRight, Pill } from 'lucide-react';
 import { TRIAGE_COLORS } from '../constants';
 import PatientLogView from './PatientLogView';
 
 interface ReportsViewProps {
     registrationLogs: RegistrationLog[];
     nurses: Staff[];
-    patientLogs: PatientLogEntry[]; // NEW
-    doctors: Staff[]; // NEW
+    patientLogs: PatientLogEntry[];
+    doctors: Staff[];
+    beds: Bed[]; // NEW - For active meds
 }
 
 interface NurseStats {
@@ -21,8 +21,8 @@ interface NurseStats {
     categories: Record<number, number>;
 }
 
-const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, patientLogs, doctors }) => {
-    const [activeTab, setActiveTab] = useState<'history' | 'triage' | 'workload' | 'flow'>('triage');
+const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, patientLogs, doctors, beds }) => {
+    const [activeTab, setActiveTab] = useState<'history' | 'triage' | 'workload' | 'flow' | 'meds'>('triage');
 
     // Shared Date State
     const now = new Date();
@@ -209,52 +209,250 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
         };
     }, [patientLogs, startDate, endDate]);
 
+    // --- MEDICATION STATS LOGIC ---
+    const medicationStats = useMemo(() => {
+        const start = new Date(startDate); start.setHours(0, 0, 0, 0);
+        const end = new Date(endDate); end.setHours(23, 59, 59, 999);
+
+        let totalOrders = 0;
+        let givenCount = 0;
+        let cancelledCount = 0;
+        const medCounts: Record<string, { count: number, dose: string }> = {};
+        const doctorCounts: Record<string, number> = {};
+
+        // Helper to process medications
+        const processMedication = (meds: any[]) => {
+            meds.forEach(med => {
+                totalOrders++;
+                if (med.status === 'Suleista') givenCount++;
+                if (med.status === 'Atšaukta') cancelledCount++;
+
+                if (med.status !== 'Atšaukta') {
+                    const key = `${med.name}`;
+                    if (!medCounts[key]) medCounts[key] = { count: 0, dose: med.dose };
+                    medCounts[key].count++;
+
+                    const docId = med.orderedBy;
+                    if (docId) {
+                        if (!doctorCounts[docId]) doctorCounts[docId] = 0;
+                        doctorCounts[docId]++;
+                    }
+                }
+            });
+        };
+
+        // 1. Process History (Discharged) - Filter by Date
+        patientLogs.forEach(log => {
+            const discharge = new Date(log.dischargeTime);
+            if (discharge < start || discharge > end) return;
+            if (log.medications) processMedication(log.medications);
+        });
+
+        // 2. Process Active Patients (In Beds)
+        beds.forEach(bed => {
+            if (bed.patient && bed.patient.medications) {
+                // Check if patient arrival is within range
+                // For simplified active patient logic, we assume active patients are relevant 
+                // if the selected period includes "Today" (current active time).
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const endDateNormalized = new Date(end);
+                endDateNormalized.setHours(0, 0, 0, 0);
+
+                // If end date is today or future, include active patients
+                if (endDateNormalized >= today) {
+                    processMedication(bed.patient.medications);
+                }
+            }
+        });
+
+        // Format Top Meds
+        const topMeds = Object.entries(medCounts)
+            .map(([name, data]) => ({ name, count: data.count, dose: data.dose }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 20); // Top 20
+
+        // Format Doctor Stats
+        const byDoctor = Object.entries(doctorCounts)
+            .map(([docId, count]) => {
+                const doc = doctors.find(d => d.id === docId);
+                return { name: doc ? doc.name : 'Nežinomas', count };
+            })
+            .sort((a, b) => b.count - a.count);
+
+        return {
+            totalOrders,
+            givenCount,
+            cancelledCount,
+            uniqueMeds: Object.keys(medCounts).length,
+            topMeds,
+            byDoctor
+        };
+    }, [patientLogs, startDate, endDate, doctors, beds]);
+
+    // --- CSV EXPORT LOGIC ---
+    const handleExportCSV = async () => {
+        console.log("Starting CSV Export...");
+        try {
+            // Add BOM for Excel UTF-8 compatibility
+            let csvContent = "\uFEFF";
+            let filename = `export_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
+
+
+            if (activeTab === 'history') {
+                const headers = ['Atvyko', 'Išvyko', 'Trukmė', 'Pacientas', 'Kategorija', 'Gydytojas', 'Statusas'];
+                csvContent += headers.join(',') + "\n";
+                patientLogs.forEach(log => {
+                    const row = [
+                        log.arrivalTime,
+                        log.dischargeTime,
+                        log.totalDuration,
+                        `"${log.patientName}"`,
+                        log.triageCategory,
+                        `"${log.treatedByDoctorName || ''}"`,
+                        log.finalStatus
+                    ];
+                    csvContent += row.join(',') + "\n";
+                });
+            } else if (activeTab === 'triage') {
+                const headers = ['Slaugytojas', 'Viso', 'Diena', 'Naktis', 'Kat 1', 'Kat 2', 'Kat 3', 'Kat 4', 'Kat 5'];
+                csvContent += headers.join(',') + "\n";
+                triageStats.forEach(stat => {
+                    const row = [
+                        `"${stat.nurseName}"`,
+                        stat.total,
+                        stat.dayCount,
+                        stat.nightCount,
+                        stat.categories[1],
+                        stat.categories[2],
+                        stat.categories[3],
+                        stat.categories[4],
+                        stat.categories[5]
+                    ];
+                    csvContent += row.join(',') + "\n";
+                });
+            } else if (activeTab === 'workload') {
+                const headers = ['Gydytojas', 'Pacientų sk.', 'Sunkūs (1-2)', 'Vid. Trukmė (min)'];
+                csvContent += headers.join(',') + "\n";
+                doctorStats.forEach(stat => {
+                    const row = [
+                        `"${stat.name}"`,
+                        stat.count,
+                        stat.critical,
+                        stat.avgDuration
+                    ];
+                    csvContent += row.join(',') + "\n";
+                });
+            } else if (activeTab === 'flow') {
+                csvContent += `Viso pacientų,${detailedFlowStats.total}\n`;
+                csvContent += `Vidutiniškai per dieną,${detailedFlowStats.avgPerDay}\n`;
+                csvContent += `Sunkių dalis(%),${detailedFlowStats.criticalRate}\n\n`;
+
+                csvContent += "LOS Analizė,Kiekis,Procentai\n";
+                csvContent += `< 1h,${detailedFlowStats.los.less1.count},${detailedFlowStats.los.less1.percent}\n`;
+                csvContent += `1 - 4h,${detailedFlowStats.los._1_4.count},${detailedFlowStats.los._1_4.percent}\n`;
+                csvContent += `4 - 8h,${detailedFlowStats.los._4_8.count},${detailedFlowStats.los._4_8.percent}\n`;
+                csvContent += `> 8h,${detailedFlowStats.los.more8.count},${detailedFlowStats.los.more8.percent}\n\n`;
+
+                csvContent += "Sunkumas,Kiekis,Procentai\n";
+                csvContent += `Reanimaciniai,${detailedFlowStats.severity.critical.count},${detailedFlowStats.severity.critical.percent}\n`;
+                csvContent += `Standartiniai,${detailedFlowStats.severity.standard.count},${detailedFlowStats.severity.standard.percent}\n`;
+                csvContent += `Lengvi,${detailedFlowStats.severity.light.count},${detailedFlowStats.severity.light.percent}\n`;
+            } else if (activeTab === 'meds') {
+                csvContent += `Viso Paskyrimų,${medicationStats.totalOrders}\n`;
+                csvContent += `Suleista,${medicationStats.givenCount}\n`;
+                csvContent += `Atšaukta,${medicationStats.cancelledCount}\n\n`;
+
+                csvContent += "TOP VAISTAI\nVaistas,Dozė,Panaudota kartų\n";
+                medicationStats.topMeds.forEach(m => {
+                    csvContent += `"${m.name}",${m.dose},${m.count}\n`;
+                });
+
+                csvContent += "\nPASKYRIMAI PAGAL GYDYTOJĄ\nGydytojas,Viso Paskyrimų\n";
+                medicationStats.byDoctor.forEach(d => {
+                    csvContent += `"${d.name}",${d.count}\n`;
+                });
+            }
+
+            console.log("Creating File object...");
+
+            // Use File object instead of Blob - preserves filename better
+            const file = new File([csvContent], filename, { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(file);
+
+            // Create anchor with explicit attributes
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.setAttribute('target', '_blank');
+            link.style.visibility = 'hidden';
+            link.style.position = 'absolute';
+            link.style.left = '-9999px';
+
+            document.body.appendChild(link);
+            console.log(`Downloading file: ${filename}`);
+
+            // Use setTimeout to ensure DOM is ready
+            setTimeout(() => {
+                link.click();
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    console.log("Download triggered successfully.");
+                }, 200);
+            }, 0);
+        } catch (error) {
+            console.error("CSV Export Failed:", error);
+            alert("Nepavyko eksportuoti CSV failo. Patikrinkite konsolę.");
+        }
+    };
+
     const handlePrint = () => { window.print(); };
 
     return (
         <div className="p-6 h-full flex flex-col overflow-hidden">
             <style>{`
-        @media print {
-          @page { margin: 0.5cm; }
-          body * {
-            visibility: hidden;
-          }
-          #printable-area, #printable-area * {
-            visibility: visible;
-          }
-          #printable-area {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 20px;
-            background-color: white !important;
-            color: black !important;
-            overflow: visible !important;
-            z-index: 9999;
-          }
-          /* Reset dark mode styles for print */
-          #printable-area .bg-slate-900, 
-          #printable-area .bg-slate-950,
-          #printable-area .bg-slate-800 {
-            background-color: white !important;
-            color: black !important;
-            border-color: #ddd !important;
-          }
-          #printable-area .text-slate-400,
-          #printable-area .text-slate-200,
-          #printable-area .text-slate-300,
-          #printable-area .text-slate-500 {
-            color: black !important;
-          }
-          /* Hide scrollbars */
-          ::-webkit-scrollbar { display: none; }
-          /* Hide buttons */
-          button { display: none !important; }
-        }
-      `}</style>
+                @media print {
+                    @page { margin: 0.5cm; }
+                    body * {
+                        visibility: hidden;
+                    }
+                    #printable-area, #printable-area * {
+                        visibility: visible;
+                    }
+                    #printable-area {
+                        position: fixed;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                        height: 100%;
+                        margin: 0;
+                        padding: 20px;
+                        background-color: white !important;
+                        color: black !important;
+                        overflow: visible !important;
+                        z-index: 9999;
+                    }
+                    /* Reset dark mode styles for print */
+                    #printable-area .bg-slate-900,
+                    #printable-area .bg-slate-950,
+                    #printable-area .bg-slate-800 {
+                        background-color: white !important;
+                        color: black !important;
+                        border-color: #ddd !important;
+                    }
+                    #printable-area .text-slate-400,
+                    #printable-area .text-slate-200,
+                    #printable-area .text-slate-300,
+                    #printable-area .text-slate-500 {
+                        color: black !important;
+                    }
+                    /* Hide scrollbars */
+                    ::-webkit-scrollbar { display: none; }
+                    /* Hide buttons */
+                    button { display: none !important; }
+                }
+            `}</style>
 
             {/* Header & Tabs */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 shrink-0 print:hidden">
@@ -269,8 +467,12 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
                     <button onClick={() => setActiveTab('triage')} className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'triage' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}><Activity size={16} /> Triažas</button>
                     <button onClick={() => setActiveTab('workload')} className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'workload' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}><Users size={16} /> Krūvis</button>
                     <button onClick={() => setActiveTab('flow')} className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'flow' ? 'bg-yellow-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}><ArrowRight size={16} /> Srautas</button>
+                    <button onClick={() => setActiveTab('meds')} className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'meds' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}><Pill size={16} /> Vaistai</button>
                 </div>
-                <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition border border-slate-700"><Printer size={18} /> Spausdinti</button>
+                <div className="flex gap-2">
+                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition border border-slate-700"><Download size={18} /> Export CSV</button>
+                    <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition border border-slate-700"><Printer size={18} /> Spausdinti</button>
+                </div>
             </div>
 
             {/* --- SHARED FILTERS FOR STATS TABS (NOT HISTORY) --- */}
@@ -301,7 +503,8 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
                     <h1 className="text-2xl font-bold text-black">
                         {activeTab === 'history' ? 'Pacientų istorija' :
                             activeTab === 'triage' ? 'Slaugytojų darbo ataskaita' :
-                                activeTab === 'workload' ? 'Gydytojų krūvio ataskaita' : 'Srauto ataskaita'}
+                                activeTab === 'workload' ? 'Gydytojų krūvio ataskaita' :
+                                    activeTab === 'flow' ? 'Srauto ataskaita' : 'Vaistų panaudojimo ataskaita'}
                     </h1>
                     <p className="text-sm text-gray-600">Periodas: {startDate} - {endDate} | Sugeneruota: {new Date().toLocaleString()}</p>
                     <hr className="my-2 border-gray-300" />
@@ -476,8 +679,92 @@ const ReportsView: React.FC<ReportsViewProps> = ({ registrationLogs, nurses, pat
                         </div>
                     </div>
                 )}
-            </div>
 
+                {/* --- TAB 5: MEDICATION STATS (NEW) --- */}
+                {activeTab === 'meds' && (
+                    <div className="h-full flex flex-col space-y-6">
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:block print:space-y-4 shrink-0">
+                            <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl print:bg-white print:border-gray-300">
+                                <div className="text-slate-500 text-xs uppercase font-bold mb-1">Viso Paskyrimų</div>
+                                <div className="text-3xl font-bold text-blue-400">{medicationStats.totalOrders}</div>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl print:bg-white print:border-gray-300">
+                                <div className="text-slate-500 text-xs uppercase font-bold mb-1">Suleista (Given)</div>
+                                <div className="text-3xl font-bold text-emerald-400">{medicationStats.givenCount}</div>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl print:bg-white print:border-gray-300">
+                                <div className="text-slate-500 text-xs uppercase font-bold mb-1">Unikalių Vaistų</div>
+                                <div className="text-3xl font-bold text-purple-400">{medicationStats.uniqueMeds}</div>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl print:bg-white print:border-gray-300">
+                                <div className="text-slate-500 text-xs uppercase font-bold mb-1">Atšaukta</div>
+                                <div className="text-3xl font-bold text-red-400">{medicationStats.cancelledCount}</div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
+                            {/* Top Medications */}
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm print:bg-white print:border-gray-300">
+                                <div className="p-4 bg-slate-950/50 border-b border-slate-800 print:bg-white print:border-black shrink-0">
+                                    <h3 className="font-bold text-slate-200 print:text-black">Populiariausi Vaistai</h3>
+                                </div>
+                                <div className="overflow-auto custom-scrollbar flex-1">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-semibold sticky top-0 z-10">
+                                            <tr>
+                                                <th className="px-4 py-2 border-b border-slate-800">Vaistas</th>
+                                                <th className="px-4 py-2 border-b border-slate-800 text-right">Kiekis</th>
+                                                <th className="px-4 py-2 border-b border-slate-800 w-32">Dalis</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800">
+                                            {medicationStats.topMeds.map((med, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-800/50">
+                                                    <td className="px-4 py-2 font-medium text-slate-300">
+                                                        {med.name} <span className="text-slate-500 text-xs ml-1">{med.dose}</span>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right font-bold text-slate-200">{med.count}</td>
+                                                    <td className="px-4 py-2">
+                                                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-blue-500 h-full" style={{ width: `${(med.count / medicationStats.totalOrders) * 100}%` }}></div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Doctors Prescribing */}
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm print:bg-white print:border-gray-300">
+                                <div className="p-4 bg-slate-950/50 border-b border-slate-800 print:bg-white print:border-black shrink-0">
+                                    <h3 className="font-bold text-slate-200 print:text-black">Paskyrimai pagal Gydytoją</h3>
+                                </div>
+                                <div className="overflow-auto custom-scrollbar flex-1">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-slate-950 text-slate-400 uppercase text-xs font-semibold sticky top-0 z-10">
+                                            <tr>
+                                                <th className="px-4 py-2 border-b border-slate-800">Gydytojas</th>
+                                                <th className="px-4 py-2 border-b border-slate-800 text-right">Paskyrimų</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800">
+                                            {medicationStats.byDoctor.map((doc, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-800/50">
+                                                    <td className="px-4 py-2 font-medium text-slate-300">{doc.name}</td>
+                                                    <td className="px-4 py-2 text-right font-bold text-emerald-400">{doc.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

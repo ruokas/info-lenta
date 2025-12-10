@@ -164,6 +164,7 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
                     nurses={nurses}
                     patientLogs={patientLog}
                     doctors={doctors}
+                    beds={beds}
                 />
             } />
             <Route path="/settings" element={
