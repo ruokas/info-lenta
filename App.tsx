@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AppRoutes } from './src/routes';
 import LoginView from './pages/LoginView';
@@ -8,7 +8,7 @@ import { AuditService } from './services/AuditService';
 import {
     Bed, Staff, PatientLogEntry, UserProfile, MedicationItem,
     AssignmentLog, RegistrationLog, PatientStatus,
-    TriageCategory
+    TriageCategory, MedicationProtocol
 } from './types';
 import { LayoutDashboard, Grid, List, ClipboardList, CalendarClock, Settings, LogOut, Menu, Bell, Search, Map, Activity, User, Stethoscope, X, FileBarChart, ShieldCheck, Pill } from 'lucide-react';
 import { useAuth } from './src/context/AuthContext';
@@ -242,6 +242,76 @@ const App: React.FC = () => {
             return b;
         }));
     };
+
+    // --- Personalized Medications Logic ---
+    const [medicationCombinations, setMedicationCombinations] = useState<MedicationProtocol[]>(() => {
+        const saved = localStorage.getItem('medicationCombinations');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // Save combinations to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem('medicationCombinations', JSON.stringify(medicationCombinations));
+    }, [medicationCombinations]);
+
+    const handleSaveCombination = (newCombo: MedicationProtocol) => {
+        console.log("App.tsx: handleSaveCombination called with:", newCombo);
+        setMedicationCombinations(prev => {
+            const updated = [...prev, newCombo];
+            console.log("App.tsx: Updated combinations count:", updated.length);
+            return updated;
+        });
+        if (currentUser) AuditService.log(currentUser, 'CREATE_PROTOCOL', `Sukurtas vaistų derinys: ${newCombo.name}`);
+    };
+
+    const handleDeleteCombination = (comboId: string) => {
+        console.log("Deleting combination (confirmed by UI):", comboId);
+        setMedicationCombinations(prev => {
+            const newList = prev.filter(c => c.id !== comboId);
+            console.log("New list length:", newList.length);
+            return newList;
+        });
+        if (currentUser) AuditService.log(currentUser, 'DELETE_PROTOCOL', `Ištrintas vaistų derinys: ${comboId}`);
+    };
+
+    const personalizedTopMeds = useMemo(() => {
+        if (!currentUser) return [];
+
+        const medCounts: Record<string, number> = {};
+
+        // Scan active patients
+        beds.forEach(bed => {
+            bed.patient?.medications?.forEach(med => {
+                if (med.orderedBy === currentUser.id) {
+                    medCounts[med.name] = (medCounts[med.name] || 0) + 1;
+                }
+            });
+        });
+
+        // Scan patient logs for history
+        patientLog.forEach(log => {
+            log.medications?.forEach(med => {
+                if (med.orderedBy === currentUser.id) {
+                    medCounts[med.name] = (medCounts[med.name] || 0) + 1;
+                }
+            });
+        });
+
+        // Convert to array and sort
+        const sortedMeds = Object.entries(medCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([name]) => {
+                return bankItem || { id: name, name, dose: '', route: 'IV' } as MedicationItem;
+            });
+
+        // Fill remaining slots from bank to ensure we always show 10 suggestions
+        const existingIds = new Set(sortedMeds.map(m => m.id));
+        const bankFill = medicationBank.filter(m => !existingIds.has(m.id));
+
+        return [...sortedMeds, ...bankFill].slice(0, 10);
+    }, [currentUser, beds, patientLog, medicationBank]);
+
 
     // --- Filtering Logic ---
     const filteredBeds = useMemo(() => {
@@ -545,6 +615,10 @@ const App: React.FC = () => {
                         onSave={handleBedUpdate}
                         workShifts={workShifts}
                         protocols={protocols}
+                        medicationCombinations={medicationCombinations}
+                        onSaveCombination={handleSaveCombination}
+                        onDeleteCombination={handleDeleteCombination}
+                        personalizedTopMeds={personalizedTopMeds}
                         onMovePatient={handleMovePatient}
                     />
                 )}

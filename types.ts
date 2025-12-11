@@ -108,6 +108,8 @@ export interface UserPreferences {
   theme?: 'dark' | 'light'; // Reserved for future
 }
 
+export type User = Staff;
+
 export interface Staff {
   id: string;
   name: string;
@@ -231,6 +233,25 @@ export interface MedicationProtocol {
   name: string;
   meds: ProtocolMedication[];
   actions: ProtocolAction[];
+}
+
+export interface EditPatientModalProps {
+  bed: Bed;
+  beds: Bed[];
+  doctors: User[];
+  nurses: User[];
+  currentUser: User;
+  medicationBank?: MedicationItem[];
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (bed: Bed) => void;
+  workShifts: WorkShift[];
+  protocols?: MedicationProtocol[];
+  onMovePatient?: (fromBedId: string, toBedId: string) => void;
+  medicationCombinations?: MedicationProtocol[];
+  onSaveCombination?: (combo: MedicationProtocol) => void;
+  onDeleteCombination?: (comboId: string) => void;
+  personalizedTopMeds?: MedicationItem[];
 }
 
 // NEW: App Settings
