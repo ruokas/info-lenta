@@ -13,10 +13,12 @@ import {
 import { LayoutDashboard, Grid, List, ClipboardList, CalendarClock, Settings, LogOut, Menu, Bell, Search, Map, Activity, User, Stethoscope, X, FileBarChart, ShieldCheck, Pill } from 'lucide-react';
 import { useAuth } from './src/context/AuthContext';
 import { useData } from './src/context/DataContext';
+import NotificationBell from './components/NotificationBell';
+import { useNotifications } from './src/context/NotificationContext';
 
 const App: React.FC = () => {
     // --- Context ---
-    const { currentUser, login, logout, updateUser: updateCurrentUser } = useAuth();
+    const { currentUser, loginQuick, logout, isLoading: authLoading, updateUser: updateCurrentUser } = useAuth();
     const {
         beds, setBeds,
         doctors, setDoctors,
@@ -36,6 +38,7 @@ const App: React.FC = () => {
         autoRefresh, setAutoRefresh,
         resetData: handleResetData
     } = useData();
+    const { addNotification } = useNotifications();
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -55,7 +58,7 @@ const App: React.FC = () => {
 
     // --- Handlers ---
     const handleLogin = (user: UserProfile) => {
-        login(user);
+        loginQuick(user);
 
         // Respect default view preference
         if (user.preferences?.defaultView) {
@@ -67,9 +70,10 @@ const App: React.FC = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
         setIsSidebarOpen(false);
+        navigate('/');
     };
 
     const handleMenuClick = (view: string, tab?: string) => {
@@ -158,6 +162,19 @@ const App: React.FC = () => {
     const handleStatusChange = (bed: Bed, newStatus: PatientStatus) => {
         setBeds(prev => prev.map(b => b.id === bed.id ? { ...b, status: newStatus } : b));
         if (currentUser) AuditService.log(currentUser, 'STATUS_CHANGE', `Lovos ${bed.label} statusas: ${bed.status} -> ${newStatus}`);
+
+        // Send notification to assigned doctor about status change
+        if (bed.assignedDoctorId && bed.patient) {
+            addNotification({
+                type: 'INFO',
+                category: 'PATIENT',
+                message: `Būsena "${newStatus}" - ${bed.patient.name} (${bed.label})`,
+                targetUserId: bed.assignedDoctorId,
+                patientName: bed.patient.name,
+                bedId: bed.id,
+                actionUrl: '/table'
+            });
+        }
     };
 
     const handleTriageSubmit = (data: { name: string; symptoms: string; triageCategory: TriageCategory; bedId: string; assignedDoctorId?: string }) => {
@@ -209,6 +226,17 @@ const App: React.FC = () => {
                 assignedAt: now.toISOString()
             };
             setAssignmentLogs(prev => [...prev, assignLog]);
+
+            // Send notification to assigned doctor
+            addNotification({
+                type: 'INFO',
+                category: 'PATIENT',
+                message: `Naujas pacientas: ${data.name} (${data.triageCategory} ESI)`,
+                targetUserId: data.assignedDoctorId,
+                patientName: data.name,
+                bedId: data.bedId,
+                actionUrl: '/map'
+            });
         }
 
         setIsTriageOpen(false);
@@ -274,6 +302,14 @@ const App: React.FC = () => {
         if (currentUser) AuditService.log(currentUser, 'DELETE_PROTOCOL', `Ištrintas vaistų derinys: ${comboId}`);
     };
 
+    const handleUpdateCombination = (updatedCombo: MedicationProtocol) => {
+        console.log("Updating combination:", updatedCombo.id);
+        setMedicationCombinations(prev =>
+            prev.map(c => c.id === updatedCombo.id ? updatedCombo : c)
+        );
+        if (currentUser) AuditService.log(currentUser, 'UPDATE_PROTOCOL', `Atnaujintas vaistų derinys: ${updatedCombo.name}`);
+    };
+
     const personalizedTopMeds = useMemo(() => {
         if (!currentUser) return [];
 
@@ -302,6 +338,7 @@ const App: React.FC = () => {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 10)
             .map(([name]) => {
+                const bankItem = medicationBank.find(m => m.name === name);
                 return bankItem || { id: name, name, dose: '', route: 'IV' } as MedicationItem;
             });
 
@@ -386,21 +423,6 @@ const App: React.FC = () => {
                     <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white transition"><X size={24} /></button>
                 </div>
 
-                <div className="p-4 border-b border-slate-800 bg-slate-800/50 cursor-pointer hover:bg-slate-800 transition group md:hidden" onClick={() => handleMenuClick('profile')}>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${currentUser.role === 'Doctor' ? 'bg-blue-600' : currentUser.role === 'Nurse' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
-                            {currentUser.name.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="overflow-hidden">
-                            <p className="font-bold truncate group-hover:text-blue-400 transition">{currentUser.name}</p>
-                            <p className="text-xs text-slate-400 uppercase">{currentUser.role === 'Admin' ? 'Administratorius' : currentUser.role === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}</p>
-                        </div>
-                    </div>
-                    <button onClick={(e) => { e.stopPropagation(); handleLogout(); }} className="w-full flex items-center justify-center gap-2 py-1.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700 rounded transition border border-slate-700">
-                        <LogOut size={12} /> Atsijungti
-                    </button>
-                </div>
-
                 <nav className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
                     {currentUser.role === 'Admin' && (
                         <button onClick={() => handleMenuClick('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${location.pathname === '/dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
@@ -434,6 +456,31 @@ const App: React.FC = () => {
                         </button>
                     </div>
                 </nav>
+
+                {/* User Profile & Logout - Always visible at bottom */}
+                <div className="p-3 border-t border-slate-800 bg-slate-900/50">
+                    <div
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-slate-800 transition group mb-2"
+                        onClick={() => handleMenuClick('profile')}
+                    >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${currentUser.role === 'Doctor' ? 'bg-blue-600' : currentUser.role === 'Nurse' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
+                            {currentUser.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="overflow-hidden flex-1 min-w-0">
+                            <p className="font-bold truncate group-hover:text-blue-400 transition text-sm">{currentUser.name}</p>
+                            <p className="text-xs text-slate-400 uppercase truncate">{currentUser.role === 'Admin' ? 'Administratorius' : currentUser.role === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <NotificationBell />
+                        <button
+                            onClick={handleLogout}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition border border-slate-700"
+                        >
+                            <LogOut size={14} /> Atsijungti
+                        </button>
+                    </div>
+                </div>
             </aside>
 
             {/* Main Content */}
@@ -529,29 +576,6 @@ const App: React.FC = () => {
                                 <X size={16} />
                             </button>
                         )}
-
-                        <div className="hidden md:flex items-center gap-3 md:ml-auto">
-                            <button
-                                onClick={() => handleMenuClick('profile')}
-                                className="flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition text-left"
-                                aria-label="Atidaryti profilį"
-                            >
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${currentUser.role === 'Doctor' ? 'bg-blue-600' : currentUser.role === 'Nurse' ? 'bg-emerald-600' : 'bg-purple-600'}`}>
-                                    {currentUser.name.substring(0, 2).toUpperCase()}
-                                </div>
-                                <div className="text-left">
-                                    <p className="font-bold leading-tight">{currentUser.name}</p>
-                                    <p className="text-xs text-slate-400 uppercase leading-tight">{currentUser.role === 'Admin' ? 'Administratorius' : currentUser.role === 'Doctor' ? 'Gydytojas' : 'Slaugytoja'}</p>
-                                </div>
-                            </button>
-
-                            <button
-                                onClick={handleLogout}
-                                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition"
-                            >
-                                <LogOut size={14} /> Atsijungti
-                            </button>
-                        </div>
                     </div>
                 )}
 
@@ -587,6 +611,10 @@ const App: React.FC = () => {
                         setWorkShifts={setWorkShifts}
                         medicationBank={medicationBank}
                         setMedications={setMedications}
+                        medicationCombinations={medicationCombinations}
+                        onSaveCombination={handleSaveCombination}
+                        onUpdateCombination={handleUpdateCombination}
+                        onDeleteCombination={handleDeleteCombination}
                     />
                 </div>
 

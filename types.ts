@@ -128,6 +128,17 @@ export interface Staff {
 export interface UserProfile extends Staff {
   isAuthenticated: boolean;
   loginTime: string;
+  authProvider?: 'local' | 'supabase';  // Autentifikacijos šaltinis
+  supabaseId?: string;  // Supabase UUID kai prijungta
+  hasPin?: boolean;  // Ar vartotojas turi nustatytą PIN
+}
+
+// Autentifikacijos kredencialai
+export interface AuthCredentials {
+  email?: string;
+  password?: string;
+  pin?: string;
+  staffId?: string;
 }
 
 export interface Patient {
@@ -210,10 +221,14 @@ export interface ActivityLog {
 export interface AppNotification {
   id: string;
   type: 'ALERT' | 'INFO' | 'WARNING' | 'SUCCESS';
+  category: 'PATIENT' | 'MEDICATION' | 'TASK' | 'SYSTEM';
   message: string;
-  timestamp: Date;
+  timestamp: string;
   isRead: boolean;
-  bedId?: string; // Optional link to a bed
+  bedId?: string;
+  patientName?: string;
+  targetUserId?: string; // For filtering notifications per user
+  actionUrl?: string; // e.g. '/table' or '/map'
 }
 
 // NEW: Protocol Types

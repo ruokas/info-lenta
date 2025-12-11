@@ -13,7 +13,7 @@ import {
     Bed, Staff, PatientLogEntry, UserProfile,
     AssignmentLog, RegistrationLog, PatientStatus,
     WorkShift, StaffSpecialization, StaffSkill,
-    ActivityLog, MedicationItem
+    ActivityLog, MedicationItem, MedicationProtocol
 } from '../types';
 
 
@@ -48,6 +48,11 @@ interface AppRoutesProps {
     updateDoctors: (docs: Staff[]) => void;
     updateNurses: (nurses: Staff[]) => void;
     setWorkShifts: (shifts: WorkShift[]) => void;
+    // Medication Combinations
+    medicationCombinations: MedicationProtocol[];
+    onSaveCombination: (combo: MedicationProtocol) => void;
+    onUpdateCombination: (combo: MedicationProtocol) => void;
+    onDeleteCombination: (comboId: string) => void;
 }
 
 export const AppRoutes: React.FC<AppRoutesProps> = ({
@@ -79,7 +84,11 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
     updateNurses,
     setWorkShifts,
     medicationBank,
-    setMedications
+    setMedications,
+    medicationCombinations,
+    onSaveCombination,
+    onUpdateCombination,
+    onDeleteCombination
 }) => {
     return (
         <Routes>
@@ -109,7 +118,11 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
                     onUpdateUser={onUpdateUser}
                     patientLogs={patientLog}
                     specializations={specializations}
-                    skills={skills}
+                    medicationBank={medicationBank}
+                    medicationCombinations={medicationCombinations}
+                    onSaveCombination={onSaveCombination}
+                    onUpdateCombination={onUpdateCombination}
+                    onDeleteCombination={onDeleteCombination}
                 />
             } />
             <Route path="/map" element={
