@@ -34,6 +34,7 @@ export interface MedicationItem {
   isActive?: boolean; // NEW: Soft delete/Archived status
   quantity: number; // NEW: Current stock
   minQuantity?: number; // NEW: Low stock alert threshold
+  expirationDate?: string; // NEW: Expiration date for the medication batch
 }
 
 export interface MedicationOrder {
